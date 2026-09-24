@@ -56,7 +56,7 @@ new events, and new logs/alerts/map-updates push to the client. You work against
 | Campaign | `server/sim/campaign.js` | Progressive levels; free play. |
 | Engine | `server/sim/engine.js` | Orchestrates the clock, wiring, deltas, scoring, and the after-action report. |
 | Server | `server/index.js` | Express static host + WebSocket game channel. |
-| GUI | `public/` | The SIEM console: KPI dashboard strip, incident grid, search with an event-volume histogram and Splunk-style field extraction, an interactive network map with **live animated packet flow**, a case/escalation editor, and a fast-forward clock. |
+| GUI | `public/` | The SIEM console, styled after the **Elastic Stack** (Kibana / Elastic Security, EUI dark theme): KPI strip, a Kibana-style left nav (Discover / Alerts / Cases), an Elastic Security alerts grid, a Discover view with a KQL query bar, date picker, event-volume histogram and expandable field extraction, an interactive network map with **live animated packet flow**, a case/escalation editor, and a fast-forward clock. |
 
 ### Threat actor groups
 Five archetypes ship, each easy to extend (add to `ARCHETYPES` in `actors.js`):

@@ -14,7 +14,7 @@
   <div id="start-screen" class="overlay">
     <div class="start-card">
       <div class="start-head">
-        <div class="logo">◤ SENTINEL<span>SOC</span></div>
+        <div class="logo"><span class="elastic-mark"><i></i><i></i><i></i><i></i></span> SENTINEL <span>Security</span></div>
         <div class="tagline">Tier 1 Analyst Training · SIEM Console</div>
       </div>
       <p class="start-blurb">
@@ -45,21 +45,17 @@
 
   <!-- ============ SIEM CONSOLE ============ -->
   <div id="console" class="console hidden">
-    <!-- Top navigation bar -->
+    <!-- Kibana-style top header -->
     <header class="topbar">
-      <div class="brand">◤ SENTINEL<span>SOC</span> <em class="brand-tag">SIEM</em></div>
-      <div class="omni">
-        <span class="omni-ico">⌕</span>
-        <input id="omni-search" type="text" class="omni-input" placeholder="Search telemetry —  index=* srcIp / user / host / “lsass”  (Enter)" autocomplete="off" />
-        <span class="omni-hint mono">SPL·KQL</span>
-      </div>
+      <div class="brand"><span class="elastic-mark"><i></i><i></i><i></i><i></i></span> SENTINEL <b>Security</b></div>
+      <div class="breadcrumbs"><span>Security</span><span class="crumb-sep">/</span><span id="scenario-name">—</span></div>
       <div class="topbar-right">
         <div class="clock-wrap">
           <span class="live-dot" id="live-dot"></span>
           <span class="clock" id="clock">--:--:--</span>
           <div class="speed-seg" id="speed-controls"></div>
         </div>
-        <div class="analyst"><span class="ana-avatar">T1</span><div class="ana-meta"><b id="analyst-name">Tier 1 Analyst</b><span class="muted small" id="scenario-name">—</span></div></div>
+        <div class="analyst"><span class="ana-avatar">T1</span><div class="ana-meta"><b id="analyst-name">t1_analyst</b><span class="muted small">Tier 1</span></div></div>
       </div>
     </header>
 
@@ -87,18 +83,21 @@
     </div>
 
     <div class="workspace">
-      <!-- Left nav rail -->
-      <nav class="rail">
-        <button class="rail-btn active" data-nav="overview" title="Overview">▤</button>
-        <button class="rail-btn" data-nav="incidents" title="Incidents">▦</button>
-        <button class="rail-btn" data-nav="investigate" title="Investigate / Search">⌕</button>
-        <button class="rail-btn" data-nav="network" title="Network">◇</button>
-        <button class="rail-btn" data-nav="cases" title="Cases / Escalation">✎</button>
-        <div class="rail-sep"></div>
-        <button class="rail-btn" data-nav="kb" title="Knowledge Base">📖</button>
-        <button class="rail-btn" data-nav="actors" title="Threat Actor Dossiers">🎭</button>
-        <button class="rail-btn" data-nav="report" title="After-Action Report">▣</button>
-        <button class="rail-btn rail-end" data-nav="new" title="New Shift">⏻</button>
+      <!-- Kibana-style left navigation -->
+      <nav class="knav">
+        <div class="knav-brand"><span class="elastic-mark"><i></i><i></i><i></i><i></i></span><span>Security</span></div>
+        <div class="knav-section">Analytics</div>
+        <button class="knav-item" data-nav="overview" title="Overview"><i>▤</i><span>Overview</span></button>
+        <button class="knav-item" data-nav="investigate" title="Discover"><i>⌕</i><span>Discover</span></button>
+        <div class="knav-section">Security</div>
+        <button class="knav-item active" data-nav="incidents" title="Alerts"><i>▦</i><span>Alerts</span></button>
+        <button class="knav-item" data-nav="cases" title="Cases"><i>✎</i><span>Cases</span></button>
+        <button class="knav-item" data-nav="network" title="Network"><i>◇</i><span>Network</span></button>
+        <div class="knav-section">Intelligence</div>
+        <button class="knav-item" data-nav="kb" title="Detection rules & KB"><i>📖</i><span>Rules &amp; KB</span></button>
+        <button class="knav-item" data-nav="actors" title="Threat actors"><i>🎭</i><span>Threat actors</span></button>
+        <button class="knav-item" data-nav="report" title="After-action report"><i>▣</i><span>After-action</span></button>
+        <button class="knav-item knav-end" data-nav="new" title="End shift"><i>⏻</i><span>End shift</span></button>
       </nav>
 
       <!-- Main grid -->
@@ -106,7 +105,7 @@
         <!-- Incidents table -->
         <section class="panel panel-alerts" data-panel="incidents">
           <div class="panel-head">
-            <h2>Incidents <span class="count-badge" id="alert-count">0</span></h2>
+            <h2>Alerts <span class="count-badge" id="alert-count">0</span></h2>
             <div class="panel-tools">
               <select id="alert-sort" class="mini-select" title="Sort">
                 <option value="sla">Sort: SLA</option>
@@ -126,7 +125,7 @@
           <div class="table-scroll">
             <table class="incident-table">
               <thead><tr>
-                <th class="c-sev">Sev</th><th class="c-time">Time</th><th class="c-rule">Detection</th>
+                <th class="c-sev">Severity</th><th class="c-time">@timestamp</th><th class="c-rule">Rule</th>
                 <th class="c-sla">SLA</th><th class="c-st">Status</th>
               </tr></thead>
               <tbody id="alert-list"></tbody>
@@ -215,30 +214,34 @@
           </div>
         </section>
 
-        <!-- Investigation / Search -->
+        <!-- Discover -->
         <section class="panel panel-logs" data-panel="investigate">
           <div class="panel-head">
-            <h2>Investigate</h2>
-            <div class="panel-tools log-tools">
-              <div class="search-wrap">
-                <span class="search-ico">⌕</span>
-                <input id="log-search" type="text" class="search-input" placeholder="search index=telemetry …" />
-              </div>
-              <select id="log-source" class="mini-select" title="Source">
-                <option value="">source=*</option>
-                <option value="auth">auth</option><option value="web">web</option>
-                <option value="process">process</option><option value="network">network</option>
-                <option value="dns">dns</option><option value="file">file</option>
-                <option value="email">email</option><option value="firewall">firewall</option>
-              </select>
-              <button id="log-live" class="btn btn-ghost btn-sm active" title="Live tail">● Live</button>
-              <span class="pivot-crumbs" id="pivot-crumbs"></span>
-            </div>
+            <h2>Discover</h2>
+            <span class="hist-label muted small" id="hist-label">events</span>
           </div>
-          <div class="histogram-wrap"><div class="histogram" id="log-histogram"></div><span class="hist-label muted small" id="hist-label">events / min</span></div>
+          <div class="kql-bar">
+            <span class="kql-badge">telemetry-*</span>
+            <div class="kql-input-wrap">
+              <span class="kql-ico">⌕</span>
+              <input id="log-search" type="text" class="kql-input" placeholder="Filter your data using KQL syntax…" />
+            </div>
+            <select id="log-source" class="mini-select" title="event.dataset">
+              <option value="">event.dataset : *</option>
+              <option value="auth">auth</option><option value="web">web</option>
+              <option value="process">process</option><option value="network">network</option>
+              <option value="dns">dns</option><option value="file">file</option>
+              <option value="email">email</option><option value="firewall">firewall</option>
+            </select>
+            <div class="datepicker" id="datepicker"><span class="dp-ico">🕒</span><span class="dp-label" id="dp-label">Live</span></div>
+            <button id="log-refresh" class="euibtn-teal" title="Refresh">↻ Refresh</button>
+            <button id="log-live" class="euibtn-empty active" title="Live tail">● Live</button>
+            <span class="pivot-crumbs" id="pivot-crumbs"></span>
+          </div>
+          <div class="histogram-wrap"><div class="histogram" id="log-histogram"></div></div>
           <div class="table-scroll">
             <table class="log-table">
-              <thead><tr><th class="c-sel"></th><th class="c-exp"></th><th class="c-time">_time</th><th class="c-src">source</th><th class="c-host">host</th><th class="c-msg">_raw</th><th class="c-piv">pivot</th></tr></thead>
+              <thead><tr><th class="c-sel"></th><th class="c-exp"></th><th class="c-time">@timestamp</th><th class="c-src">event.dataset</th><th class="c-host">host.name</th><th class="c-msg">message</th><th class="c-piv">pivot</th></tr></thead>
               <tbody id="log-body"></tbody>
             </table>
           </div>

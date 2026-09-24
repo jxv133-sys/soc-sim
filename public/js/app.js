@@ -205,6 +205,7 @@
   function renderMeta() {
     const mt = S.meta;
     $('#clock').textContent = mt.clock || '--:--:--';
+    const dp = $('#dp-label'); if (dp && S.live && mt.clock) dp.textContent = 'Live · ' + mt.clock.slice(0, 5);
     $$('#speed-controls .speed-btn').forEach((b) => b.classList.toggle('active', +b.dataset.speed === mt.speed));
     $('#t2-count').textContent = S.messages.length;
     renderKPIs();
@@ -277,7 +278,7 @@
       const mitre = (a.kb && a.kb.mitre) ? a.kb.mitre : '';
       const sub = [mitre, ent].filter(Boolean).join('  ·  ');
       tr.innerHTML =
-        `<td class="c-sev"><span class="sev-cell sev-${a.severity}"><span class="sev-dot"></span><span class="sev-txt">${a.severity.slice(0, 4)}</span></span></td>` +
+        `<td class="c-sev"><span class="sev-cell sev-${a.severity}"><span class="sev-dot"></span><span class="sev-txt">${a.severity}</span></span></td>` +
         `<td class="c-time it-time">${fmtClock(a.ts)}</td>` +
         `<td class="c-rule"><div class="it-rule" title="${esc(a.title)}">${esc(a.title)}</div><div class="it-ent" title="${esc(sub)}">${esc(sub)}</div></td>` +
         `<td class="c-sla"><span class="sla-pill ${sla.cls}">${sla.txt}</span></td>` +
@@ -487,6 +488,7 @@
     else if (kind === 'time') { q.sinceTs = +value - 120; q.untilTs = +value + 120; }
     if (S.searchSource) q.source = S.searchSource;
     if (S.searchText) q.q = S.searchText;
+    S.lastQuery = q;
     setPivotCrumbs([{ kind, value: kind === 'time' ? `±120s @ ${fmtClock(+value)}` : value }]);
     Net.send('search', { query: q });
   }
@@ -510,6 +512,7 @@
       S.live = false; setLiveBtn();
       const q = { q: S.searchText, limit: 400 };
       if (S.searchSource) q.source = S.searchSource;
+      S.lastQuery = q;
       setPivotCrumbs(S.searchText ? [{ kind: 'search', value: S.searchText }] : []);
       Net.send('search', { query: q });
     }, 250);
@@ -521,7 +524,10 @@
   };
   $('#log-live').onclick = goLive;
   function goLive() { S.live = true; S.viewEvents = null; S.searchText = ''; searchInput.value = ''; setPivotCrumbs([]); setLiveBtn(); renderLogs(); }
-  function setLiveBtn() { $('#log-live').classList.toggle('active', S.live); }
+  function setLiveBtn() {
+    $('#log-live').classList.toggle('active', S.live);
+    const dp = $('#dp-label'); if (dp) dp.textContent = S.live ? 'Live' : 'Filtered';
+  }
 
   // ---------------- evidence tray ----------------
   function toggleEvidence(ev, on) {
@@ -593,30 +599,25 @@
   });
   $('#briefing-dismiss').onclick = () => { $('#briefing').classList.add('hidden'); };
 
-  // ---------------- left nav rail ----------------
-  $$('.rail-btn').forEach((b) => b.onclick = () => {
+  // ---------------- Kibana left nav ----------------
+  $$('.knav-item').forEach((b) => b.onclick = () => {
     const nav = b.dataset.nav;
     if (nav === 'kb') return openKb();
     if (nav === 'actors') return openDossiers();
     if (nav === 'report') return Net.send('get_report');
     if (nav === 'new') return toStartScreen();
-    $$('.rail-btn').forEach((x) => x.classList.toggle('active', x === b));
-    const panelSel = { overview: null, incidents: '.panel-alerts', investigate: '.panel-logs', network: '.panel-map', cases: '.panel-ticket' }[nav];
+    $$('.knav-item').forEach((x) => x.classList.toggle('active', x === b));
+    const panelSel = { overview: '.panel-alerts', incidents: '.panel-alerts', investigate: '.panel-logs', network: '.panel-map', cases: '.panel-ticket' }[nav];
     if (panelSel) { const p = $(panelSel); if (p) { p.classList.add('flash'); setTimeout(() => p.classList.remove('flash'), 600); if (nav === 'investigate') $('#log-search').focus(); } }
   });
 
-  // ---------------- omni search (top bar) → investigation ----------------
-  $('#omni-search').addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    const q = $('#omni-search').value.trim();
-    $('#log-search').value = q; S.searchText = q;
-    if (!q) { goLive(); return; }
-    S.live = false; setLiveBtn();
-    const query = { q, limit: 400 }; if (S.searchSource) query.source = S.searchSource;
-    setPivotCrumbs([{ kind: 'search', value: q }]);
-    Net.send('search', { query });
-    const p = $('.panel-logs'); if (p) { p.classList.add('flash'); setTimeout(() => p.classList.remove('flash'), 600); }
-  });
+  // ---------------- Discover refresh (KQL bar) ----------------
+  $('#log-refresh').onclick = () => {
+    if (S.live) { renderLogs(); return; }
+    // re-run the current query/pivot
+    if (S.lastQuery) Net.send('search', { query: S.lastQuery });
+    else renderLogs();
+  };
 
   // ---------------- modals ----------------
   $('#modal-close').onclick = () => $('#modal').classList.add('hidden');

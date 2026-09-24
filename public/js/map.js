@@ -10,7 +10,8 @@
   const ZONE_Y = { internet: 40, dmz: 150, corp: 300, servers: 300, mgmt: 470 };
   const ZONE_X = { corp: [40, 480], servers: [560, 980] };
 
-  const ZONE_COLOR = { internet: '#39424f', dmz: '#e0803a', corp: '#4a90d9', servers: '#37d67a', mgmt: '#b57ce0' };
+  // Elastic (EUI) palette to match the console theme.
+  const ZONE_COLOR = { internet: '#535966', dmz: '#da8b45', corp: '#36a2ef', servers: '#54b399', mgmt: '#f68fbe' };
 
   function laneNodes(hosts) {
     const byZone = {};
@@ -71,30 +72,30 @@
           'background-color': (n) => ZONE_COLOR[n.data('zone')] || '#39424f',
           'background-opacity': 0.18, 'border-width': 2,
           'border-color': (n) => ZONE_COLOR[n.data('zone')] || '#39424f',
-          label: 'data(label)', color: '#cdd7e1', 'font-size': 11, 'font-family': 'JetBrains Mono, monospace',
-          'text-valign': 'bottom', 'text-margin-y': 4, 'text-outline-color': '#0a0e13', 'text-outline-width': 2,
+          label: 'data(label)', color: '#dfe5ef', 'font-size': 11, 'font-family': 'Roboto Mono, monospace',
+          'text-valign': 'bottom', 'text-margin-y': 4, 'text-outline-color': '#141519', 'text-outline-width': 2,
           width: 34, height: 34, shape: 'round-rectangle',
         }},
         { selector: 'node[type="internet"]', style: { shape: 'ellipse', 'background-opacity': 0.25, width: 46, height: 46, 'border-color': '#5f7183', 'background-color': '#39424f' } },
         { selector: 'node[?crown]', style: { 'border-width': 3, 'border-style': 'double' } },
-        { selector: 'edge', style: { width: 1.2, 'line-color': '#22303f', 'curve-style': 'bezier', 'target-arrow-shape': 'none', opacity: 0.7 } },
+        { selector: 'edge', style: { width: 1.2, 'line-color': '#343741', 'curve-style': 'bezier', 'target-arrow-shape': 'none', opacity: 0.7 } },
         // Implicated by an alert
-        { selector: 'node.implicated', style: { 'background-opacity': 0.4, 'border-color': '#ffd43b', 'border-width': 3 } },
+        { selector: 'node.implicated', style: { 'background-opacity': 0.4, 'border-color': '#fec514', 'border-width': 3 } },
         // Player tags
-        { selector: 'node.tag-suspected', style: { 'border-color': '#ffb84d', 'border-style': 'dashed', 'border-width': 3 } },
-        { selector: 'node.tag-confirmed', style: { 'border-color': '#ff9f43', 'border-width': 4 } },
-        { selector: 'node.tag-contained', style: { 'border-color': '#6fb1fc', 'border-width': 4, 'border-style': 'dotted' } },
+        { selector: 'node.tag-suspected', style: { 'border-color': '#fec514', 'border-style': 'dashed', 'border-width': 3 } },
+        { selector: 'node.tag-confirmed', style: { 'border-color': '#da8b45', 'border-width': 4 } },
+        { selector: 'node.tag-contained', style: { 'border-color': '#36a2ef', 'border-width': 4, 'border-style': 'dotted' } },
         { selector: 'node.tag-clear', style: {} },
         // Observed impact
-        { selector: 'node.impact-dark', style: { 'background-color': '#ff4d5e', 'background-opacity': 0.55, 'border-color': '#ff4d5e', color: '#fff', 'border-width': 3 } },
-        { selector: 'node.impact-spread', style: { 'background-color': '#ff7043', 'background-opacity': 0.6, 'border-color': '#ff4d5e', 'border-width': 3 } },
-        { selector: 'node.impact-exfil', style: { 'background-color': '#b57ce0', 'background-opacity': 0.5, 'border-color': '#b57ce0', 'border-width': 3 } },
-        { selector: 'node.impact-mine', style: { 'background-color': '#ffd43b', 'background-opacity': 0.5, 'border-color': '#ffd43b', 'border-width': 3 } },
-        { selector: 'node.contained', style: { 'border-style': 'dotted', 'border-color': '#6fb1fc', opacity: 0.6 } },
-        { selector: 'edge.hot', style: { 'line-color': '#ff4d5e', width: 2.4, opacity: 1 } },
+        { selector: 'node.impact-dark', style: { 'background-color': '#e7664c', 'background-opacity': 0.55, 'border-color': '#e7664c', color: '#fff', 'border-width': 3 } },
+        { selector: 'node.impact-spread', style: { 'background-color': '#da8b45', 'background-opacity': 0.6, 'border-color': '#e7664c', 'border-width': 3 } },
+        { selector: 'node.impact-exfil', style: { 'background-color': '#f68fbe', 'background-opacity': 0.5, 'border-color': '#f68fbe', 'border-width': 3 } },
+        { selector: 'node.impact-mine', style: { 'background-color': '#d6bf57', 'background-opacity': 0.5, 'border-color': '#d6bf57', 'border-width': 3 } },
+        { selector: 'node.contained', style: { 'border-style': 'dotted', 'border-color': '#36a2ef', opacity: 0.6 } },
+        { selector: 'edge.hot', style: { 'line-color': '#e7664c', width: 2.4, opacity: 1 } },
         // Animated traffic packets travelling along edges.
         { selector: 'node.pkt', style: { label: '', 'text-opacity': 0, events: 'no', 'border-width': 0, width: 7, height: 7, 'background-opacity': 1, 'z-index': 999, shape: 'ellipse' } },
-        { selector: 'edge.flowing', style: { 'line-color': '#2f4a63', width: 1.8, opacity: 1 } },
+        { selector: 'edge.flowing', style: { 'line-color': '#2c5a57', width: 1.8, opacity: 1 } },
       ],
       layout: { name: 'preset' },
     });
@@ -139,7 +140,7 @@
 
   // Send a little packet gliding along the edge from → to. Colour encodes the
   // log source, so the analyst literally watches traffic move across the network.
-  const PKT_COLOR = { auth: '#6fb1fc', web: '#e0803a', network: '#37d67a', dns: '#8a9bad', ambient: '#2f5266' };
+  const PKT_COLOR = { auth: '#36a2ef', web: '#da8b45', network: '#54b399', dns: '#98a2b3', ambient: '#2c5a57' };
   let pktSeq = 0;
   let pktCount = 0;
   function flowPacket(fromId, toId, kind) {
@@ -150,7 +151,7 @@
     if (!p0 || !p1) return;
     const ambient = kind === 'ambient';
     const id = 'pkt-' + (pktSeq++);
-    const color = PKT_COLOR[kind] || '#35d0e0';
+    const color = PKT_COLOR[kind] || '#00bfb3';
     const sz = ambient ? 4 : 7;
     let node;
     try {
