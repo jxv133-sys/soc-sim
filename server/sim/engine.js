@@ -147,9 +147,8 @@ export class GameSession {
     const prevInfected = new Set(this.attack.infected.keys());
     this.attack.tick({ ts: this.simTime, dt, emit: this._emit });
 
-    // 3) Tier 2 executes due actions.
-    const prevStatus = this.attack.status;
-    this.tier2.tick({ ts: this.simTime, attack: this.attack, getEvent: (id) => this.events.get(id) });
+    // 3) Tier 2 completes reviews and reports back (applying any score impact).
+    this.tier2.tick({ ts: this.simTime, attack: this.attack, getEvent: (id) => this.events.get(id), addPoints: (n) => { this.player.points += n; } });
     if ((this.attack.status === 'stopped' || this.attack.status === 'gaveup') && this.containedTs === null) {
       this.containedTs = this.simTime;
     }
@@ -261,20 +260,19 @@ export class GameSession {
     };
     const result = this.tier2.submit(enriched, { ts: this.simTime, attack: this.attack, getEvent: (id) => this.events.get(id) });
 
-    // Update alert status + running score.
+    // Record the analyst's disposition and mark the incident submitted/under
+    // review. NO score or verdict is applied here — that only happens when Tier 2
+    // finishes its review (in tier2.tick) and reports back.
     if (alert) {
       alert.status = ticket.verdict === 'false_positive' ? 'dismissed' : 'escalated';
       this._delta.alertUpdates.push({ id: alert.id, status: alert.status });
     }
-    this.player.tickets.push({ ...enriched, ts: this.simTime, result: { q: result.q, kind: result.kind } });
-    // Running points.
-    if (result.kind === 'escalation') this.player.points += Math.round((result.q || 0) * 100);
-    else if (result.kind === 'false_escalation') this.player.points -= 50;
-    else if (result.kind === 'dismissal') this.player.points += result.correct ? 10 : -30;
+    this.player.tickets.push({ ...enriched, ts: this.simTime, caseId: result.caseId, kind: result.kind });
 
     this._drainTier2Messages();
     this._delta.meta = this.metaSnapshot();
-    return { ok: true, result: { q: result.q, kind: result.kind, followUp: result.followUp, eta: result.executeTs ? result.executeTs - this.simTime : null } };
+    // The client is told only that the case was received — no quality, no verdict.
+    return { ok: true, result: { caseId: result.caseId, kind: result.kind, received: true } };
   }
 
   // ---- Server-side log search (full history) ----
@@ -314,7 +312,7 @@ export class GameSession {
       simTime: this.simTime, clock: fmtClock(this.simTime), hour: hourOf(this.simTime),
       speed: this.speed, paused: this.paused, ended: this.ended, endReason: this.endReason || null,
       trust: +this.tier2.trust.toFixed(2), points: this.player.points,
-      pending: this.tier2.pending.map((e) => ({ title: e.ticket.alertTitle, eta: Math.max(0, e.executeTs - this.simTime) })),
+      reviewing: this.tier2.pending.length, // count of cases under Tier 2 review (no ETA revealed)
       attackStatus: this.attack.status,
     };
   }
@@ -384,11 +382,14 @@ export class GameSession {
       ? (this.containedTs != null ? this.containedTs : this.simTime) - this.firstMaliciousTs
       : 0;
 
-    // Scoring.
+    // Scoring. Ticket outcomes come from Tier 2's reviewed cases (plus any still
+    // under review at end-of-shift).
+    const cases = [...this.tier2.history, ...this.tier2.pending].sort((a, b) => a.submittedTs - b.submittedTs);
     const falseEsc = this.tier2.falseEscalations;
     const goodEsc = this.tier2.goodEscalations;
     const breachedMal = this.alerts.filter((a) => a.status === 'breached' && a._malicious).length;
-    const avgQ = this.player.tickets.filter((t) => t.result?.q != null).reduce((s, t, _, arr) => s + t.result.q / arr.length, 0) || 0;
+    const escCases = cases.filter((c) => c.kind === 'escalation');
+    const avgQ = escCases.length ? escCases.reduce((s, c) => s + (c.q || 0), 0) / escCases.length : 0;
 
     const outcomeScore = this._scoreOutcome(gt, { crownJewelsHit, dwell, falseEsc, breachedMal, avgQ, goodEsc, businessDisruptionPct });
 
@@ -412,7 +413,12 @@ export class GameSession {
         firstEscalatedStage: firstEscalated ? firstEscalated.stage : null,
       },
       timeline,
-      playerActions: this.player.tickets.map((t) => ({ ts: t.ts, clock: fmtClock(t.ts), alertTitle: t.alertTitle, verdict: t.verdict, action: t.recommendedAction, q: t.result?.q, kind: t.result?.kind })),
+      playerActions: cases.map((c) => ({
+        caseId: c.caseId, ts: c.submittedTs, clock: fmtClock(c.submittedTs),
+        alertTitle: c.ticket.alertTitle, verdict: c.ticket.verdict, action: c.ticket.recommendedAction,
+        q: c.q, kind: c.kind, resolved: !!c.resolved,
+        disposition: c.resolved ? c.disposition : 'under_review',
+      })),
       metrics: {
         dwellSeconds: dwell, crownJewelsHit, infectedCount: infected.length,
         businessDisruptionPct, disruptionLabel,

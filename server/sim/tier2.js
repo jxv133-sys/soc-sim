@@ -15,7 +15,7 @@ const BASE_DELAY = { critical: 20, high: 40, medium: 150, low: 300 };
 // Hard ceiling on response time by severity, so an urgent ticket is always acted
 // on fast even if it's imperfect or trust is low. Slower tiers stay quality- and
 // trust-sensitive (that's where triage discipline is taught).
-const MAX_DELAY = { critical: 75, high: 150, medium: 700, low: 1200 };
+const MAX_DELAY = { critical: 75, high: 150, medium: 320, low: 460 };
 const URGENT = new Set(['critical', 'high']);
 
 // Which stage implies which "true" severity, used to grade the player's call.
@@ -28,11 +28,12 @@ const SEV_RANK = { low: 0, medium: 1, high: 2, critical: 3 };
 export class Tier2 {
   constructor() {
     this.trust = 1.0;
-    this.pending = []; // [{ticket, executeTs, q, actions, followUp}]
-    this.history = []; // resolved tickets with grades
+    this.pending = []; // cases under review [{caseId, ticket, reviewTs, s, q, alertMalicious, actions, kind}]
+    this.history = []; // reviewed cases with disposition
     this.messages = []; // feedback lines shown to the player
     this.falseEscalations = 0;
     this.goodEscalations = 0;
+    this.caseSeq = 0;
     this._msgId = 0;
   }
 
@@ -127,83 +128,48 @@ export class Tier2 {
     return { q, hostScore, evidenceScore, actionScore, sevScore, acctScore, coversPrimary, hasEvidence, trueSev, actionTargetsCompromised, hasPersistence };
   }
 
-  // Player submits a ticket. Returns immediate feedback; the action (if any) is
-  // scheduled and executed later in tick().
+  // Player submits a case. The analyst gets NO immediate assessment — Tier 2
+  // takes time to review, then reports back (in tick()) the disposition it
+  // determined (true / false positive) and the actions it took. Quality is graded
+  // silently now and only surfaces as the review's speed and outcome.
   submit(ticket, ctx) {
     const ts = ctx.ts;
     const attack = ctx.attack;
-    const alertMalicious = ticket._alertMalicious; // set by engine from the alert's evidence truth
-
-    // False-positive verdict: player dismisses the alert (no escalation).
-    if (ticket.verdict === 'false_positive') {
-      const wasActuallyMalicious = alertMalicious;
-      const rec = { ...ticket, submittedTs: ts, resolvedTs: ts, q: null, kind: 'dismissal', correct: !wasActuallyMalicious };
-      if (wasActuallyMalicious) {
-        this._msg(ts, 'warning', `You marked "${ticket.alertTitle}" as a false positive — but it was part of a real intrusion. That thread is now unwatched.`);
-      } else {
-        this.goodEscalations += 0; // dismissals don't build trust, but don't hurt
-        this._msg(ts, 'ok', `Dismissed "${ticket.alertTitle}" as benign. Good triage — that was normal activity.`);
-        this.trust = Math.min(1, this.trust + 0.02);
-      }
-      this.history.push(rec);
-      return rec;
-    }
-
-    // Escalation. Grade it.
-    const s = this.score(ticket, ctx);
-
-    // Over-escalation of noise erodes trust (alert fatigue).
-    if (!alertMalicious) {
-      this.falseEscalations++;
-      this.trust = Math.max(0.3, this.trust - 0.12);
-      this._msg(ts, 'warning', `Tier 2: "${ticket.alertTitle}" looks like benign activity. Escalating noise slows our real work — trust ${(this.trust * 100) | 0}%.`);
-      const rec = { ...ticket, submittedTs: ts, resolvedTs: ts, q: s.q, kind: 'false_escalation', correct: false, score: s };
-      this.history.push(rec);
-      return rec;
-    }
-
-    this.goodEscalations++;
-    this.trust = Math.min(1, this.trust + 0.05);
-
-    // Compute response delay from quality, trust, and severity. Urgent tickets
-    // (critical/high) get gentler quality/trust penalties and a hard ceiling, so
-    // a confirmed high-severity threat is contained quickly no matter what.
+    const alertMalicious = !!ticket._alertMalicious; // ground truth (server-side only)
     const sev = ticket.severity;
-    const urgent = URGENT.has(sev);
-    const base = BASE_DELAY[sev] || 150;
-    const qualityMult = 0.7 + (1 - s.q) * (urgent ? 0.6 : 2.3);
-    const trustMult = 1 / Math.max(urgent ? 0.7 : 0.3, this.trust);
-    let delay = Math.round(base * qualityMult * trustMult);
+    const isEsc = ticket.verdict !== 'false_positive';
+    const s = this.score(ticket, ctx); // graded silently, revealed later via the outcome
+    const caseId = 'CASE-' + String(++this.caseSeq).padStart(3, '0');
 
-    // Vague ticket → Tier 2 asks a follow-up first (extra time). For urgent
-    // tickets the follow-up is minimal — they act first and clarify in parallel.
-    let followUp = null;
-    if (!s.hasEvidence || !s.coversPrimary || s.q < 0.4) {
-      followUp = !s.hasEvidence
-        ? 'Tier 2 needs supporting log lines — attach the specific events.'
-        : !s.coversPrimary
-        ? 'Tier 2 asks: which host is actually affected? The named host does not appear compromised.'
-        : 'Tier 2 asks for clarification before acting.';
-      delay += Math.round(base * (urgent ? 0.25 : 0.8));
-      this._msg(ts, 'question', `Tier 2: ${followUp}`);
+    let reviewDelay, actions = [];
+    if (!isEsc) {
+      // Analyst closed it as a false positive → Tier 2 does a quick QA pass.
+      reviewDelay = Math.round((BASE_DELAY[sev] || 150) * 0.4) + 20;
+    } else {
+      // Escalation → review time scales with quality, trust and severity. Urgent
+      // (critical/high) reviews are fast with a hard ceiling; the action itself
+      // only lands if the review confirms a true positive.
+      const urgent = URGENT.has(sev);
+      const base = BASE_DELAY[sev] || 150;
+      const qualityMult = 0.7 + (1 - s.q) * (urgent ? 0.6 : 2.3);
+      const trustMult = 1 / Math.max(urgent ? 0.7 : 0.3, this.trust);
+      reviewDelay = Math.round(base * qualityMult * trustMult);
+      if (!s.hasEvidence || !s.coversPrimary || s.q < 0.4) reviewDelay += Math.round(base * (urgent ? 0.25 : 0.8));
+      reviewDelay = Math.min(reviewDelay, MAX_DELAY[sev] || 700);
+      if (alertMalicious) actions = this._planActions(ticket, s, attack); // acted on only if truly a TP
     }
-    delay = Math.min(delay, MAX_DELAY[sev] || 700);
-
-    // Translate the recommendation into concrete actions on the attack.
-    const actions = this._planActions(ticket, s, attack);
 
     const entry = {
-      ticket: { ...ticket, submittedTs: ts },
-      executeTs: ts + delay,
-      q: s.q,
-      score: s,
-      actions,
-      followUp,
-      kind: 'escalation',
+      caseId, kind: isEsc ? 'escalation' : 'dismissal',
+      ticket: { ...ticket, submittedTs: ts }, submittedTs: ts, reviewTs: ts + reviewDelay,
+      s, q: s.q, alertMalicious, actions, resolved: false,
     };
     this.pending.push(entry);
-    this._msg(ts, 'ok', `Tier 2 accepted escalation "${ticket.alertTitle}" (quality ${(s.q * 100) | 0}%). Acting in ~${delay}s.`);
-    return entry;
+
+    // Neutral acknowledgement only — no verdict, no score.
+    if (isEsc) this._msg(ts, 'received', `${caseId} raised — Tier 2 is reviewing your escalation of "${ticket.alertTitle}".`);
+    else this._msg(ts, 'received', `${caseId} — you closed "${ticket.alertTitle}" as a false positive; sent to Tier 2 for QA.`);
+    return { caseId, kind: entry.kind };
   }
 
   _planActions(ticket, s, attack) {
@@ -247,28 +213,57 @@ export class Tier2 {
     return out;
   }
 
-  // Execute due actions each tick.
+  // Complete reviews whose time has come and report back to the analyst. This is
+  // the ONLY place a disposition (true / false positive) or an action is
+  // revealed. `ctx.addPoints(n)` applies the (previously hidden) score impact.
   tick(ctx) {
     const ts = ctx.ts;
-    const due = this.pending.filter((e) => ts >= e.executeTs);
-    this.pending = this.pending.filter((e) => ts < e.executeTs);
+    const due = this.pending.filter((e) => ts >= e.reviewTs);
+    this.pending = this.pending.filter((e) => ts < e.reviewTs);
+    const add = ctx.addPoints || (() => {});
     for (const e of due) {
-      const applied = [];
-      for (const a of e.actions) {
-        const notes = ctx.attack.applyAction(a);
-        applied.push(...notes);
-      }
+      e.resolved = true;
       e.resolvedTs = ts;
-      e.applied = applied;
-      this.history.push(e);
-      const stopped = ctx.attack.status === 'stopped' || ctx.attack.status === 'gaveup';
-      if (applied.length === 0) {
-        this._msg(ts, 'warning', `Tier 2 acted on "${e.ticket.alertTitle}" but the recommendation ("${e.ticket.recommendedAction}") had no effect. Re-evaluate.`);
-      } else if (stopped) {
-        this._msg(ts, 'success', `Tier 2 executed your ticket "${e.ticket.alertTitle}": ${applied.join('; ')}. The intrusion is contained.`);
+      e.disposition = e.alertMalicious ? 'true_positive' : 'false_positive';
+      const title = e.ticket.alertTitle;
+
+      if (e.kind === 'escalation') {
+        if (e.alertMalicious) {
+          // Confirmed true positive → Tier 2 carries out the recommended action.
+          const applied = [];
+          for (const a of e.actions) applied.push(...ctx.attack.applyAction(a));
+          e.applied = applied;
+          this.goodEscalations++;
+          this.trust = Math.min(1, this.trust + 0.05);
+          add(Math.round((e.q || 0) * 100));
+          const stopped = ctx.attack.status === 'stopped' || ctx.attack.status === 'gaveup';
+          const weak = !e.s.hasEvidence || !e.s.coversPrimary;
+          if (!applied.length) {
+            this._msg(ts, 'warning', `${e.caseId} — Tier 2 confirms TRUE POSITIVE on "${title}", but your recommended action ("${e.ticket.recommendedAction}") had no usable effect. Re-escalate with the right action.`);
+          } else if (stopped) {
+            this._msg(ts, 'success', `${e.caseId} — TRUE POSITIVE confirmed on "${title}". Tier 2 actioned: ${applied.join('; ')}. The intrusion is contained.`);
+          } else {
+            this._msg(ts, 'ok', `${e.caseId} — TRUE POSITIVE on "${title}". Tier 2 actioned: ${applied.join('; ')}. Effect may be partial — watch for a fallback.${weak ? ' (Review was slowed by thin evidence.)' : ''}`);
+          }
+        } else {
+          // Over-escalated benign activity → assessed false positive, trust drops.
+          this.falseEscalations++;
+          this.trust = Math.max(0.3, this.trust - 0.12);
+          add(-50);
+          this._msg(ts, 'warning', `${e.caseId} — Tier 2 assessed "${title}" as a FALSE POSITIVE (benign activity); no action taken. Over-escalating noise erodes trust (now ${(this.trust * 100) | 0}%).`);
+        }
       } else {
-        this._msg(ts, 'ok', `Tier 2 executed: ${applied.join('; ')}. Effect may be partial — verify the attacker hasn't fallen back.`);
+        // Dismissal QA: was the analyst right to close it?
+        if (!e.alertMalicious) {
+          this.trust = Math.min(1, this.trust + 0.02);
+          add(10);
+          this._msg(ts, 'ok', `${e.caseId} — Tier 2 QA concurs: "${title}" was a FALSE POSITIVE. Closed. Good triage.`);
+        } else {
+          add(-30);
+          this._msg(ts, 'warning', `${e.caseId} — Tier 2 QA: "${title}" was a MISSED TRUE POSITIVE — real malicious activity you closed as benign. It was not actioned; logged for the after-action.`);
+        }
       }
+      this.history.push(e);
     }
   }
 }

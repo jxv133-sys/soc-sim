@@ -369,9 +369,11 @@
   function onTicketResult(m) {
     const r = m.result && m.result.result;
     if (!r) return;
-    if (r.kind === 'false_escalation') toast('Tier 2: that looks benign — over-escalating costs trust.');
-    else if (r.kind === 'dismissal') toast('Alert dismissed.');
-    else toast(`Ticket accepted — quality ${Math.round((r.q || 0) * 100)}%${r.eta ? `, acting in ~${Math.round(r.eta)}s` : ''}.`);
+    // No verdict or quality is revealed here — Tier 2 reviews and reports back.
+    const label = r.caseId || 'Case';
+    toast(r.kind === 'dismissal'
+      ? `${label} sent to Tier 2 QA — awaiting review.`
+      : `${label} submitted to Tier 2 — under review. They'll report back with the disposition and actions.`);
     if (m.meta) { S.meta = m.meta; renderMeta(); }
     // clear evidence tray + notes after submit
     S.evidence.clear(); renderEvidence(); $('#tf-notes').value = '';
@@ -694,8 +696,9 @@
     html += `</tbody></table>`;
 
     if (r.playerActions && r.playerActions.length) {
-      html += `<h3 style="margin:18px 0 6px">Your tickets</h3><table class="timeline-tbl"><thead><tr><th>Time</th><th>Alert</th><th>Verdict</th><th>Action</th><th>Quality</th></tr></thead><tbody>`;
-      for (const p of r.playerActions) html += `<tr><td>${esc(p.clock)}</td><td>${esc(p.alertTitle)}</td><td>${esc(p.verdict)}</td><td>${esc(p.action || '—')}</td><td>${p.q != null ? Math.round(p.q * 100) + '%' : '—'}</td></tr>`;
+      html += `<h3 style="margin:18px 0 6px">Your cases</h3><table class="timeline-tbl"><thead><tr><th>Case</th><th>Time</th><th>Detection</th><th>Your call</th><th>Action</th><th>Tier 2 disposition</th><th>Quality</th></tr></thead><tbody>`;
+      const DISP = { true_positive: '<span class="tag-dot tag-caught">true positive</span>', false_positive: '<span class="tag-dot tag-seen">false positive</span>', under_review: '<span class="muted small">under review</span>' };
+      for (const p of r.playerActions) html += `<tr><td class="mono">${esc(p.caseId || '')}</td><td>${esc(p.clock)}</td><td>${esc(p.alertTitle)}</td><td>${esc(p.verdict === 'false_positive' ? 'false positive' : 'escalate')}</td><td>${esc(p.action || '—')}</td><td>${DISP[p.disposition] || '—'}</td><td>${p.q != null ? Math.round(p.q * 100) + '%' : '—'}</td></tr>`;
       html += `</tbody></table>`;
     }
 

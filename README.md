@@ -118,12 +118,16 @@ npm run dev
 4. **Use the map (center).** Hosts light up when alerts implicate them. Click a host to investigate
    it or tag it *suspected / confirmed / contained*. **Fog of war:** the map shows what you know —
    only observed impact (dark host, spreading worm) is revealed; true state comes in the report.
-5. **Escalate (right).** Attach evidence by ticking real log lines, fill the ticket (verdict,
+5. **Escalate (right).** Attach evidence by ticking real log lines, fill the case (disposition,
    severity, affected hosts/accounts, source IPs, recommended action), and submit to Tier 2.
-   - A **strong** ticket (right host, solid evidence, correct action) → Tier 2 acts fast.
-   - A **vague** ticket → Tier 2 asks a follow-up and burns time.
-   - A **wrong** recommendation (reset a password when a backdoor exists) → acts but doesn't fully work; the attacker falls back.
-   - **Over-escalating noise** drops Tier 2's trust, slowing every future ticket (alert fatigue).
+   You get **no instant verdict** — Tier 2 reviews the case and only then reports back the
+   disposition it determined (**true / false positive**) and the actions it took. What you did
+   well or badly shows up in *how that review turns out*, not in an immediate score:
+   - A **strong** ticket (right host, solid evidence, correct action) → Tier 2 confirms and acts fast.
+   - A **vague** ticket → the review takes longer before Tier 2 acts, burning time.
+   - A **wrong** recommendation (reset a password when a backdoor exists) → it acts but doesn't fully work; the attacker falls back.
+   - **Over-escalating noise** comes back assessed a false positive and drops Tier 2's trust, slowing every future review (alert fatigue).
+   - Closing a real threat as a false positive is caught by Tier 2's QA review — but only after the fact, once the damage window has moved on.
 6. **Learn.** 📖 KB explains each alert type (what it means, benign look-alikes, what to check).
    💡 Hints (cost points) point toward *where to look*, not the answer.
 7. **After-action report.** On game end (or on demand), a side-by-side timeline shows **what the
