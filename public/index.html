@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SOC Analyst Training Simulator</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0e13'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%2335d0e0' font-family='monospace'%3E%E2%97%A4%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Cytoscape.js is vendored locally so the console works with zero external dependencies (offline-capable). -->
+  <script src="js/vendor/cytoscape.min.js" defer></script>
+</head>
+<body>
+  <!-- ============ START / BRIEFING SCREEN ============ -->
+  <div id="start-screen" class="overlay">
+    <div class="start-card">
+      <div class="start-head">
+        <div class="logo">◤ SENTINEL<span>SOC</span></div>
+        <div class="tagline">Tier 1 Analyst Training Simulator</div>
+      </div>
+      <p class="start-blurb">
+        A live, procedurally-generated SOC. Every shift starts from a seed that builds the network,
+        the staff, the day's normal activity, and the intrusion. Alerts emerge from detection rules
+        running over real logs — so the false alarms are genuine, not scripted. Triage the queue,
+        investigate by pivoting through logs, attribute the actor, and escalate well-written tickets
+        to Tier 2 before the attacker reaches its objective.
+      </p>
+
+      <div class="start-cols">
+        <div>
+          <h3>Campaign</h3>
+          <div id="level-list" class="level-list"></div>
+        </div>
+        <div>
+          <h3>Free Play</h3>
+          <p class="muted small">Enter a seed to replay an exact scenario, or leave blank for a random one. Seeds are shareable.</p>
+          <label class="fld"><span>Seed</span><input id="seed-input" type="text" placeholder="random" autocomplete="off" /></label>
+          <button id="btn-freeplay" class="btn btn-primary">Start Free-Play Shift</button>
+          <div class="start-note muted small">
+            Tip: pause early (<kbd>Space</kbd>) and get oriented. You learn most from the after-action report.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAIN CONSOLE ============ -->
+  <div id="console" class="console hidden">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">◤ SENTINEL<span>SOC</span></div>
+      <div class="clock-block">
+        <div class="clock" id="clock">--:--:--</div>
+        <div class="clock-controls">
+          <button id="btn-pause" class="ctrl" title="Pause/Resume (Space)">⏸</button>
+          <div class="speeds" id="speed-controls"></div>
+        </div>
+      </div>
+      <div class="status-block">
+        <div class="stat"><span class="stat-label">SCENARIO</span><span class="stat-val" id="scenario-name">—</span></div>
+        <div class="stat"><span class="stat-label">SEED</span><span class="stat-val mono" id="seed-name">—</span></div>
+        <div class="stat"><span class="stat-label">TIER 2 TRUST</span><span class="stat-val" id="trust-val">100%</span>
+          <div class="trust-bar"><div id="trust-fill"></div></div>
+        </div>
+        <div class="stat"><span class="stat-label">SCORE</span><span class="stat-val" id="score-val">1000</span></div>
+      </div>
+      <div class="topbar-actions">
+        <button id="btn-kb" class="btn btn-ghost" title="Knowledge Base">📖 KB</button>
+        <button id="btn-dossiers" class="btn btn-ghost" title="Threat Actor Dossiers">🎭 Actors</button>
+        <button id="btn-report" class="btn btn-ghost" title="After-Action Report">📊 Report</button>
+        <button id="btn-new" class="btn btn-ghost" title="New Shift">⏻ New</button>
+      </div>
+    </header>
+
+    <!-- Briefing banner (dismissible) -->
+    <div id="briefing" class="briefing hidden">
+      <div class="briefing-inner">
+        <div class="briefing-title">📋 Shift Briefing — <span id="briefing-name"></span></div>
+        <div class="briefing-body" id="briefing-body"></div>
+        <ul class="briefing-goals" id="briefing-goals"></ul>
+        <button id="briefing-dismiss" class="btn btn-primary btn-sm">Begin Shift ▶</button>
+      </div>
+    </div>
+
+    <!-- Main grid -->
+    <main class="grid">
+      <!-- LEFT: Alert queue -->
+      <section class="panel panel-alerts">
+        <div class="panel-head">
+          <h2>Alert Queue <span class="badge" id="alert-count">0</span></h2>
+          <div class="panel-tools">
+            <select id="alert-sort" class="mini-select" title="Sort">
+              <option value="sla">SLA ↑</option>
+              <option value="severity">Severity</option>
+              <option value="time">Newest</option>
+            </select>
+            <select id="alert-filter" class="mini-select" title="Filter status">
+              <option value="open">Open</option>
+              <option value="all">All</option>
+              <option value="new">New</option>
+              <option value="escalated">Escalated</option>
+              <option value="dismissed">Dismissed</option>
+              <option value="breached">Breached</option>
+            </select>
+          </div>
+        </div>
+        <div class="alert-list" id="alert-list"></div>
+      </section>
+
+      <!-- CENTER: map + investigation -->
+      <section class="panel panel-map">
+        <div class="panel-head">
+          <h2>Network Map <span class="muted small" id="map-org"></span></h2>
+          <div class="panel-tools">
+            <span class="legend"><i class="lg lg-dmz"></i>DMZ</span>
+            <span class="legend"><i class="lg lg-corp"></i>Corp</span>
+            <span class="legend"><i class="lg lg-servers"></i>Servers</span>
+            <span class="legend"><i class="lg lg-mgmt"></i>Mgmt</span>
+            <span class="legend"><i class="lg lg-impact"></i>Impact</span>
+          </div>
+        </div>
+        <div id="cy" class="cy"></div>
+        <div class="map-foot" id="map-foot"><span class="muted small">Click a host to investigate it or tag what you know. Fog of war: only observed impact is shown here.</span></div>
+      </section>
+
+      <!-- RIGHT: ticket editor + tier2 feed -->
+      <section class="panel panel-ticket">
+        <div class="tabs" id="right-tabs">
+          <button class="tab active" data-tab="ticket">Ticket</button>
+          <button class="tab" data-tab="tier2">Tier 2 <span class="badge" id="t2-count">0</span></button>
+          <button class="tab" data-tab="detail">Alert</button>
+        </div>
+
+        <div class="tab-body" data-body="ticket">
+          <div id="ticket-empty" class="muted small pad">Select an alert, gather evidence, and write a ticket to escalate to Tier 2.</div>
+          <form id="ticket-form" class="ticket-form hidden">
+            <div class="tf-alert" id="tf-alert"></div>
+            <label class="fld"><span>Verdict</span>
+              <div class="radio-row">
+                <label><input type="radio" name="verdict" value="escalate" checked /> Escalate (true positive)</label>
+                <label><input type="radio" name="verdict" value="false_positive" /> False positive</label>
+              </div>
+            </label>
+            <div class="fld-row">
+              <label class="fld"><span>Severity</span>
+                <select name="severity" id="tf-severity">
+                  <option value="low">Low</option><option value="medium">Medium</option>
+                  <option value="high">High</option><option value="critical">Critical</option>
+                </select>
+              </label>
+              <label class="fld"><span>Recommended action</span>
+                <select name="recommendedAction" id="tf-action">
+                  <option value="isolate_host">Isolate host</option>
+                  <option value="reset_credentials">Reset credentials</option>
+                  <option value="disable_account">Disable account</option>
+                  <option value="block_ip">Block IP</option>
+                  <option value="remediate_vector">Remediate access vector / patch</option>
+                  <option value="full_remediation">Full remediation (comprehensive)</option>
+                  <option value="monitor">Monitor only</option>
+                </select>
+              </label>
+            </div>
+            <label class="fld"><span>Affected hosts <span class="muted small">(comma-separated)</span></span>
+              <input type="text" id="tf-hosts" placeholder="e.g. web01, db01" />
+            </label>
+            <label class="fld"><span>Affected accounts <span class="muted small">(comma-separated)</span></span>
+              <input type="text" id="tf-accounts" placeholder="e.g. jsmith" />
+            </label>
+            <label class="fld"><span>Source IPs <span class="muted small">(comma-separated)</span></span>
+              <input type="text" id="tf-ips" placeholder="e.g. 185.23.4.7" />
+            </label>
+            <div class="fld">
+              <span>Evidence <span class="muted small">(select log lines in the investigation view)</span></span>
+              <div class="evidence-tray" id="evidence-tray"><span class="muted small">No evidence attached.</span></div>
+            </div>
+            <label class="fld"><span>Analyst notes</span>
+              <textarea id="tf-notes" rows="2" placeholder="Summary for Tier 2…"></textarea>
+            </label>
+            <div class="tf-actions">
+              <button type="button" id="btn-hint" class="btn btn-ghost btn-sm" title="Costs 25 points">💡 Hint (-25)</button>
+              <button type="submit" class="btn btn-primary">Submit to Tier 2 ▶</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="tab-body hidden" data-body="tier2">
+          <div class="t2-feed" id="t2-feed"><div class="muted small pad">Tier 2 messages will appear here.</div></div>
+        </div>
+
+        <div class="tab-body hidden" data-body="detail">
+          <div id="alert-detail" class="alert-detail"><div class="muted small pad">Select an alert to see details and its knowledge-base explainer.</div></div>
+        </div>
+      </section>
+
+      <!-- BOTTOM: investigation / log search -->
+      <section class="panel panel-logs">
+        <div class="panel-head">
+          <h2>Investigation</h2>
+          <div class="panel-tools log-tools">
+            <input id="log-search" type="text" class="search-input" placeholder="Search logs (full-text)… e.g. srcIp, user, ‘lsass’" />
+            <select id="log-source" class="mini-select" title="Source">
+              <option value="">all sources</option>
+              <option value="auth">auth</option><option value="web">web</option>
+              <option value="process">process</option><option value="network">network</option>
+              <option value="dns">dns</option><option value="file">file</option>
+              <option value="email">email</option><option value="firewall">firewall</option>
+            </select>
+            <button id="log-live" class="btn btn-ghost btn-sm active" title="Live tail">● Live</button>
+            <span class="pivot-crumbs" id="pivot-crumbs"></span>
+          </div>
+        </div>
+        <div class="log-table-wrap">
+          <table class="log-table">
+            <thead><tr><th class="c-sel"></th><th class="c-time">Time</th><th class="c-src">Source</th><th class="c-host">Host</th><th class="c-msg">Message</th><th class="c-piv">Pivot</th></tr></thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============ MODALS ============ -->
+  <div id="modal" class="overlay hidden">
+    <div class="modal-card">
+      <div class="modal-head"><h2 id="modal-title">—</h2><button id="modal-close" class="btn btn-ghost">✕</button></div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/ws.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

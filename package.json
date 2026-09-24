@@ -1,0 +1,28 @@
+{
+  "name": "soc-sim",
+  "version": "1.0.0",
+  "description": "SOC Tier 1 Analyst Training Simulator — procedurally generated, detection-rule-driven, live SOC console",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "soc",
+    "security",
+    "training",
+    "simulation",
+    "blue-team",
+    "education"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "cytoscape": "^3.30.2"
+  }
+}
