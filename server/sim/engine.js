@@ -17,14 +17,14 @@ import { fmtClock, hourOf } from './time.js';
 import { ALERT_KB, actorDossier } from './knowledge.js';
 import { generateBackground } from './behavior.js';
 
-// Clock calibration. At 1x the sim advances 2 sim-seconds per 500ms tick — i.e.
-// ~4 sim-seconds per real second, so a 5-minute (300s) critical SLA gives the
-// analyst ~75 real seconds to react, and the log stream is a readable trickle
-// rather than a blur. Faster speeds are for skipping quiet stretches; 0.5x is
-// for careful work during a busy incident.
+// Clock calibration. At 1x the simulation runs in real time — one sim-second per
+// real second (two 500ms ticks, each advancing 0.5 sim-seconds) — so a 5-minute
+// critical SLA is genuinely five minutes and packets animate at a lifelike rate.
+// The analyst can accelerate (2x/4x/8x) to fast-forward quiet stretches to the
+// next activity; there is no pause (the feed is always live).
 const REAL_TICK_MS = 500;         // wall-clock interval between ticks
-const SIM_STEP_AT_1X = 2;         // sim-seconds advanced per tick at speed 1x
-const SPEEDS = [0.5, 1, 2, 4, 8];
+const SIM_STEP_AT_1X = 0.5;       // sim-seconds advanced per tick (2 ticks/sec = real time at 1x)
+const SPEEDS = [1, 2, 4, 8];      // real-time and fast-forward multipliers
 const MAX_EVENTS = 60000;         // safety cap on stored events
 
 export class GameSession {
@@ -54,8 +54,9 @@ export class GameSession {
 
     // --- Clock / control ---
     this.simTime = (options.startHour ?? 8) * 3600; // begin mid-morning, office busy
-    this.speed = options.speed ?? 1; // start at the calm baseline speed
-    this.paused = true; // start paused so the player can get oriented
+    // 1x = real time; the analyst can accelerate to fast-forward to activity.
+    this.speed = options.speed ?? 1;
+    this.paused = false; // the feed is always live — no pause control
     this.ended = false;
     this.startedRealTs = Date.now();
     this.postImpactUntil = null;
@@ -125,9 +126,10 @@ export class GameSession {
     };
   }
 
-  // ---- Clock control ----
-  setPaused(p) { this.paused = !!p; this._delta.meta = this.metaSnapshot(); }
+  // ---- Clock control ---- (fast-forward only; the UI has no pause)
   setSpeed(s) { if (SPEEDS.includes(s)) this.speed = s; this._delta.meta = this.metaSnapshot(); }
+  // Retained for headless/testing control; the live UI never pauses.
+  setPaused(p) { this.paused = !!p; this._delta.meta = this.metaSnapshot(); }
 
   // ---- The main tick ----
   tick() {

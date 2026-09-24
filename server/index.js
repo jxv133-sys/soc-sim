@@ -46,8 +46,8 @@ wss.on('connection', (ws) => {
     const finalSeed = seed && String(seed).trim() ? String(seed).trim() : randomSeed();
     const lvl = level ? getLevel(level) : null;
     const opts = lvl
-      ? { allowArchetypes: lvl.allowArchetypes || undefined, actor: lvl.allowArchetypes && lvl.allowArchetypes.length === 1 ? lvl.allowArchetypes[0] : undefined, startHour: lvl.startHour, speed: 1 }
-      : { startHour: 8, speed: 1 };
+      ? { allowArchetypes: lvl.allowArchetypes || undefined, actor: lvl.allowArchetypes && lvl.allowArchetypes.length === 1 ? lvl.allowArchetypes[0] : undefined, startHour: lvl.startHour }
+      : { startHour: 8 };
     const session = new GameSession(finalSeed, opts);
     conn.session = session;
 
@@ -78,12 +78,6 @@ wss.on('connection', (ws) => {
     switch (msg.type) {
       case 'new_game':
         startGame({ seed: msg.seed, level: msg.level });
-        break;
-      case 'pause':
-        if (s) { s.setPaused(true); send(ws, 'delta', { delta: { events: [], alerts: [], alertUpdates: [], messages: [], map: [], meta: s.metaSnapshot() } }); }
-        break;
-      case 'resume':
-        if (s) { s.setPaused(false); send(ws, 'delta', { delta: { events: [], alerts: [], alertUpdates: [], messages: [], map: [], meta: s.metaSnapshot() } }); }
         break;
       case 'set_speed':
         if (s) { s.setSpeed(msg.speed); send(ws, 'delta', { delta: { events: [], alerts: [], alertUpdates: [], messages: [], map: [], meta: s.metaSnapshot() } }); }

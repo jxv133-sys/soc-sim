@@ -30,10 +30,11 @@ observable log fields — never the hidden ground-truth tag — so the false ala
 separate labeled category. In a typical queue, benign alerts outnumber malicious ones.
 
 ### 3. The simulation is live and dynamic.
-The game runs on an **accelerated clock with pause and speed controls** (pausing is essential for
-learning). Logs and alerts stream to the client over **WebSocket** as the simulation ticks. Each
-tick: users generate normal activity, the attacker advances if ready, detection rules evaluate new
-events, and new logs/alerts/map-updates push to the client. You work against time and SLA timers.
+The game runs in **real time at 1×** (one sim-second per real second) with **fast-forward speed
+controls (2× / 4× / 8×)** to skip quiet stretches to the next activity — the feed is always live,
+there is no pause. Logs and alerts stream to the client over **WebSocket** as the simulation ticks.
+Each tick: users generate normal activity, the attacker advances if ready, detection rules evaluate
+new events, and new logs/alerts/map-updates push to the client. You work against time and SLA timers.
 
 ---
 
@@ -55,7 +56,7 @@ events, and new logs/alerts/map-updates push to the client. You work against tim
 | Campaign | `server/sim/campaign.js` | Progressive levels; free play. |
 | Engine | `server/sim/engine.js` | Orchestrates the clock, wiring, deltas, scoring, and the after-action report. |
 | Server | `server/index.js` | Express static host + WebSocket game channel. |
-| GUI | `public/` | The SOC console (alert queue, investigation, network map, ticket editor, clock). |
+| GUI | `public/` | The SIEM console: KPI dashboard strip, incident grid, search with an event-volume histogram and Splunk-style field extraction, an interactive network map with **live animated packet flow**, a case/escalation editor, and a fast-forward clock. |
 
 ### Threat actor groups
 Five archetypes ship, each easy to extend (add to `ARCHETYPES` in `actors.js`):
@@ -130,14 +131,15 @@ npm run dev
    line that would have revealed each one, plus the moment the attack could have been stopped.
    You're scored on dwell time, damage, business disruption, false escalations, and ticket quality.
 
-Keyboard: **Space** pauses/resumes.
+Keyboard: **1 / 2 / 4 / 8** set the clock speed.
 
-**Pacing.** The shift starts paused at 08:00 (a busy office, so there's benign
-activity to triage immediately). The default **1×** speed advances ~4 sim-seconds
-per real second — a critical alert's 5-minute SLA gives you about 75 real seconds
-to react, and logs arrive as a readable trickle. Drop to **0.5×** during a hectic
-incident, or jump to **4× / 8×** to fast-forward quiet stretches. When in doubt,
-pause and investigate.
+**Pacing.** The shift starts at 08:00 (a busy office, so there's benign activity
+to triage immediately) and runs in **real time**: a critical alert's 5-minute SLA
+is genuinely five minutes, and the log stream and network packets move at a
+lifelike rate. There is no pause — the SOC is always live. Use the **speed
+control** (top-right, or number keys) to fast-forward quiet stretches to the next
+activity; Tier 2 responds to a confirmed critical/high escalation in seconds, not
+hours.
 
 ---
 

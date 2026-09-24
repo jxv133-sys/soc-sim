@@ -92,6 +92,9 @@
         { selector: 'node.impact-mine', style: { 'background-color': '#ffd43b', 'background-opacity': 0.5, 'border-color': '#ffd43b', 'border-width': 3 } },
         { selector: 'node.contained', style: { 'border-style': 'dotted', 'border-color': '#6fb1fc', opacity: 0.6 } },
         { selector: 'edge.hot', style: { 'line-color': '#ff4d5e', width: 2.4, opacity: 1 } },
+        // Animated traffic packets travelling along edges.
+        { selector: 'node.pkt', style: { label: '', 'text-opacity': 0, events: 'no', 'border-width': 0, width: 7, height: 7, 'background-opacity': 1, 'z-index': 999, shape: 'ellipse' } },
+        { selector: 'edge.flowing', style: { 'line-color': '#2f4a63', width: 1.8, opacity: 1 } },
       ],
       layout: { name: 'preset' },
     });
@@ -134,5 +137,35 @@
     n.animate({ style: { 'background-opacity': 0.6 } }, { duration: 200, complete: () => n.animate({ style: { 'background-opacity': 0.18 } }, { duration: 500 }) });
   }
 
-  window.SOCMap = { init, setImplicated, setTag, setImpact, pulse };
+  // Send a little packet gliding along the edge from → to. Colour encodes the
+  // log source, so the analyst literally watches traffic move across the network.
+  const PKT_COLOR = { auth: '#6fb1fc', web: '#e0803a', network: '#37d67a', dns: '#8a9bad', ambient: '#2f5266' };
+  let pktSeq = 0;
+  let pktCount = 0;
+  function flowPacket(fromId, toId, kind) {
+    if (!cy || pktCount > 70) return;
+    const a = cy.$id(fromId), b = cy.$id(toId);
+    if (!a || !b || a.empty() || b.empty()) return;
+    const p0 = a.position(), p1 = b.position();
+    if (!p0 || !p1) return;
+    const ambient = kind === 'ambient';
+    const id = 'pkt-' + (pktSeq++);
+    const color = PKT_COLOR[kind] || '#35d0e0';
+    const sz = ambient ? 4 : 7;
+    let node;
+    try {
+      node = cy.add({ group: 'nodes', data: { id, pkt: true }, position: { x: p0.x, y: p0.y }, classes: 'pkt', selectable: false, grabbable: false });
+      node.style({ 'background-color': color, width: sz, height: sz, 'background-opacity': ambient ? 0.6 : 1 });
+    } catch (e) { return; }
+    pktCount++;
+    // briefly light the edge a non-ambient packet rides
+    const edge = !ambient ? a.edgesWith(b) : null;
+    if (edge && edge.length) edge.addClass('flowing');
+    node.animate(
+      { position: { x: p1.x, y: p1.y } },
+      { duration: ambient ? 900 : 750, easing: 'ease-in-out-quad', complete: () => { try { node.remove(); } catch (e) {} pktCount--; if (edge && edge.length) edge.removeClass('flowing'); } }
+    );
+  }
+
+  window.SOCMap = { init, setImplicated, setTag, setImpact, pulse, flowPacket };
 })();

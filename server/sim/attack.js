@@ -49,9 +49,12 @@ export class AttackEngine {
     this.shiftStart = (options.startHour ?? 6) * 3600;
 
     const tr = actor.traits;
-    // Trait-derived timing (sim-seconds). Faster/less-patient actors move quicker.
-    this.durationFactor = 0.4 + (1 - tr.speed) * 2.0;
-    this.dwellFactor = 0.2 + tr.patience * 3.0;
+    // Trait-derived timing (sim-seconds ≈ real seconds now). Faster/less-patient
+    // actors move quicker. Tuned so a loud actor's whole chain plays out over
+    // ~6-12 real minutes and a patient one over ~15-30, keeping sessions
+    // realistic but bounded without any fast-forward.
+    this.durationFactor = 0.45 + (1 - tr.speed) * 0.95;
+    this.dwellFactor = 0.25 + tr.patience * 1.05;
 
     this.status = 'dormant';
     this.currentStage = null;
@@ -144,27 +147,14 @@ export class AttackEngine {
     // malicious activity to find in the logs). For actors that keep their own
     // working hours, we roll forward to the first moment they'd actually be
     // active — that constrained window is itself an attribution clue.
+    // With no fast-forward, the intrusion must engage the analyst promptly. A
+    // negative offset means the attacker is already underway at shift start
+    // (simTime begins at shift start, so it acts from the first tick); otherwise
+    // it opens within ~2 minutes. Fixed-hours actors already have morning
+    // windows that include the shift, so _canActNow lets them act right away and
+    // still knock off in the evening (the attribution clue).
     const shiftStart = this.shiftStart;
-    const maxDelay = 60 * 60; // never let the intrusion sit idle more than 60 sim-min into the shift
-    // A negative offset means the attacker is already underway at shift start
-    // (simTime begins at shift start, so it acts from the first tick); a small
-    // positive offset gives a short calm ramp. This keeps the default 1x pace
-    // from feeling empty while still varying when the intrusion appears.
-    let base = shiftStart + rng.int(-45 * 60, 30 * 60);
-    if (actor.respectsActiveHours) {
-      // Roll forward to the first moment this actor would be active, but cap the
-      // wait — a fixed-hours actor whose window opens later still opens its
-      // account near shift start rather than leaving the queue empty for hours.
-      let scan = Math.max(0, shiftStart - 30 * 60);
-      let guard = 0;
-      while (!inHours(scan, actor.activeHours.start, actor.activeHours.end) && scan < shiftStart + maxDelay && guard < 200) {
-        scan += 900; guard++;
-      }
-      base = inHours(scan, actor.activeHours.start, actor.activeHours.end)
-        ? scan + rng.int(0, 20 * 60)
-        : shiftStart + rng.int(0, 30 * 60);
-    }
-    const beginTs = Math.max(0, Math.min(base, shiftStart + maxDelay));
+    const beginTs = Math.max(0, shiftStart + rng.int(-30 * 60, 120));
 
     return { vector, foothold, primaryTarget, beginTs };
   }
@@ -586,11 +576,12 @@ export class AttackEngine {
     if (this.stagePhase === 'idle') {
       const next = target ? this._nextHop(target) : this._anyReachable();
       if (!next) {
-        // No path — either we're done or blocked.
-        if (target && this.footholds.has(target)) { this._advance('objective', 20); return; }
-        // If we have a foothold on any server, treat as objective-capable.
-        const serverFoothold = [...this.footholds].find((h) => this.network.hostById[h]?.zone === 'servers');
-        if (serverFoothold || this.actor.objective === 'cryptomine' || this.actor.objective === 'data_theft') { this._advance('objective', 20); return; }
+        // No further path toward the target. As long as we still hold a live
+        // foothold, execute the objective on the best host we have rather than
+        // idling forever (any payload — encrypt/exfil/mine/wipe — can detonate
+        // on a compromised host). Only if we've lost every foothold do we react.
+        const live = [...this.footholds].filter((h) => !this.containedHosts.has(h));
+        if (live.length) { this._advance('objective', 20); return; }
         this._reactToDisruption();
         return;
       }

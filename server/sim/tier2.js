@@ -8,8 +8,15 @@
 // Over-escalating noise erodes Tier 2's trust, and low trust slows every future
 // ticket (alert fatigue, modeled from the receiving end).
 
-// Base time (sim-seconds) Tier 2 takes to act on a *perfect* ticket, by severity.
-const BASE_DELAY = { critical: 90, high: 150, medium: 240, low: 360 };
+// Base time (sim-seconds ≈ real seconds) Tier 2 takes to act on a *perfect*
+// ticket, by severity. Critical/high are treated as urgent: a confirmed webshell
+// or credential-dumping escalation gets a near-immediate response — not an hour.
+const BASE_DELAY = { critical: 20, high: 40, medium: 150, low: 300 };
+// Hard ceiling on response time by severity, so an urgent ticket is always acted
+// on fast even if it's imperfect or trust is low. Slower tiers stay quality- and
+// trust-sensitive (that's where triage discipline is taught).
+const MAX_DELAY = { critical: 75, high: 150, medium: 700, low: 1200 };
+const URGENT = new Set(['critical', 'high']);
 
 // Which stage implies which "true" severity, used to grade the player's call.
 const STAGE_SEVERITY = {
@@ -158,13 +165,18 @@ export class Tier2 {
     this.goodEscalations++;
     this.trust = Math.min(1, this.trust + 0.05);
 
-    // Compute response delay from quality, trust, and severity.
-    const base = BASE_DELAY[ticket.severity] || 240;
-    const qualityMult = 0.7 + (1 - s.q) * 2.3;
-    const trustMult = 1 / Math.max(0.3, this.trust);
+    // Compute response delay from quality, trust, and severity. Urgent tickets
+    // (critical/high) get gentler quality/trust penalties and a hard ceiling, so
+    // a confirmed high-severity threat is contained quickly no matter what.
+    const sev = ticket.severity;
+    const urgent = URGENT.has(sev);
+    const base = BASE_DELAY[sev] || 150;
+    const qualityMult = 0.7 + (1 - s.q) * (urgent ? 0.6 : 2.3);
+    const trustMult = 1 / Math.max(urgent ? 0.7 : 0.3, this.trust);
     let delay = Math.round(base * qualityMult * trustMult);
 
-    // Vague ticket → Tier 2 asks a follow-up first (extra time).
+    // Vague ticket → Tier 2 asks a follow-up first (extra time). For urgent
+    // tickets the follow-up is minimal — they act first and clarify in parallel.
     let followUp = null;
     if (!s.hasEvidence || !s.coversPrimary || s.q < 0.4) {
       followUp = !s.hasEvidence
@@ -172,9 +184,10 @@ export class Tier2 {
         : !s.coversPrimary
         ? 'Tier 2 asks: which host is actually affected? The named host does not appear compromised.'
         : 'Tier 2 asks for clarification before acting.';
-      delay += Math.round(base * 0.8);
+      delay += Math.round(base * (urgent ? 0.25 : 0.8));
       this._msg(ts, 'question', `Tier 2: ${followUp}`);
     }
+    delay = Math.min(delay, MAX_DELAY[sev] || 700);
 
     // Translate the recommendation into concrete actions on the attack.
     const actions = this._planActions(ticket, s, attack);

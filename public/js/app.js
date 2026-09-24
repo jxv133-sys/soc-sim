@@ -12,10 +12,10 @@
     meta: {}, network: null, level: null, users: [], usersByName: {}, hostsById: {},
     alerts: new Map(), events: [], eventsById: new Map(),
     messages: [], msgSeen: new Set(),
-    kb: {}, dossiers: [], hostTags: {}, levels: [],
+    kb: {}, dossiers: [], hostTags: {}, levels: [], ipToHost: {},
     selectedAlertId: null, evidence: new Map(),
     live: true, pivots: [], searchSource: '', searchText: '', viewEvents: null,
-    ended: false,
+    ended: false, epsBuf: [], expanded: new Set(),
   };
 
   // ---------------- boot ----------------
@@ -88,6 +88,8 @@
     $('#scenario-name').textContent = m.level ? m.level.title : 'Free Play';
     $('#seed-name').textContent = m.seed;
     $('#map-org').textContent = `${snap.network.org} · ${snap.network.domain}`;
+    S.ipToHost = Object.fromEntries(snap.network.hosts.map((h) => [h.ip, h.id]));
+    S.epsBuf = [];
     buildSpeeds(m.speeds || [1, 2, 4, 8]);
 
     // Briefing
@@ -106,23 +108,15 @@
     renderAll();
   }
 
-  function buildSpeeds(speeds) {
-    const c = $('#speed-controls'); c.innerHTML = '';
-    speeds.forEach((sp) => {
-      const b = el('button', 'speed-btn', `${sp}×`);
-      b.dataset.speed = sp;
-      b.onclick = () => Net.send('set_speed', { speed: sp });
-      c.appendChild(b);
-    });
-  }
-
   // ---------------- deltas ----------------
   function applyDelta(d) {
     if (!d) return;
     if (d.events && d.events.length) {
       for (const ev of d.events) { S.events.push(ev); S.eventsById.set(ev.id, ev); }
       if (S.events.length > EV_CAP) S.events.splice(0, S.events.length - EV_CAP);
+      S.epsBuf.push({ t: Date.now(), n: d.events.length });
       if (S.live) renderLogs();
+      animateFlows(d.events);
     }
     if (d.alerts && d.alerts.length) {
       for (const a of d.alerts) {
@@ -152,16 +146,87 @@
 
   function addMessage(m) { if (m && !S.msgSeen.has(m.id)) { S.msgSeen.add(m.id); S.messages.push(m); } }
 
-  // ---------------- meta / topbar ----------------
+  // ---------------- live packet flow on the map ----------------
+  const INTERNAL_RE = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+  function ipNode(ip) {
+    if (!ip) return null;
+    if (S.ipToHost[ip]) return S.ipToHost[ip];   // a known internal asset
+    if (INTERNAL_RE.test(ip)) return null;        // internal but not a mapped host
+    return 'internet';                            // external address → the internet cloud
+  }
+  // Resolve an event to a directed edge (from → to) on the map, if it represents
+  // traffic between two nodes we can place.
+  function flowEndpoints(ev) {
+    const f = ev.fields || {};
+    switch (ev.source) {
+      case 'network': return [ipNode(ev.srcIp) || ipNode(f.srcIp), ipNode(f.dstIp)];
+      case 'auth':    return [ipNode(ev.srcIp), ev.host];            // login flows to the host
+      case 'web':     return [ipNode(ev.srcIp), ev.host];            // request flows to the server
+      case 'dns':     return [ev.host, 'internet'];                  // resolver query out
+      default:        return [null, null];
+    }
+  }
+  function animateFlows(events) {
+    if (!window.SOCMap || !SOCMap.flowPacket) return;
+    let budget = 14; // cap packets spawned per delta to keep the map calm
+    for (const ev of events) {
+      if (budget <= 0) break;
+      const [from, to] = flowEndpoints(ev);
+      if (from && to && from !== to) { SOCMap.flowPacket(from, to, ev.source); budget--; }
+    }
+  }
+
+  // Ambient background traffic: a steady, cosmetic trickle of packets along real
+  // firewall-permitted links so the network map always looks alive (these are
+  // not log events — just the constant hum of a working network).
+  setInterval(() => {
+    if (!S.network || !window.SOCMap || !SOCMap.flowPacket) return;
+    if (S.meta.paused || S.meta.ended) return;
+    const edges = S.network.edges;
+    if (!edges || !edges.length) return;
+    const n = 1 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      const e = edges[Math.floor(Math.random() * edges.length)];
+      // mostly ride internal links; occasionally show internet egress
+      SOCMap.flowPacket(e.from, e.to, 'ambient');
+    }
+  }, 600);
+
+  // ---------------- meta / topbar / KPIs ----------------
+  function buildSpeeds(speeds) {
+    const c = $('#speed-controls'); if (!c) return; c.innerHTML = '';
+    speeds.forEach((sp) => {
+      const b = el('button', 'speed-btn', `${sp}×`);
+      b.dataset.speed = sp;
+      b.onclick = () => Net.send('set_speed', { speed: sp });
+      c.appendChild(b);
+    });
+  }
   function renderMeta() {
     const mt = S.meta;
     $('#clock').textContent = mt.clock || '--:--:--';
-    $('#trust-val').textContent = Math.round((mt.trust ?? 1) * 100) + '%';
-    $('#trust-fill').style.width = Math.round((mt.trust ?? 1) * 100) + '%';
-    $('#score-val').textContent = mt.points ?? 0;
-    $('#btn-pause').textContent = mt.paused ? '▶' : '⏸';
     $$('#speed-controls .speed-btn').forEach((b) => b.classList.toggle('active', +b.dataset.speed === mt.speed));
     $('#t2-count').textContent = S.messages.length;
+    renderKPIs();
+  }
+  const THREAT_LABEL = { dormant: 'Quiet', active: 'Active intrusion', spreading: 'SPREADING', stopped: 'Contained', gaveup: 'Withdrawn', succeeded: 'BREACHED' };
+  function renderKPIs() {
+    const mt = S.meta;
+    const open = [...S.alerts.values()].filter((a) => a.status === 'new' || a.status === 'breached');
+    const crit = open.filter((a) => a.severity === 'critical').length;
+    const high = open.filter((a) => a.severity === 'high').length;
+    const breach = [...S.alerts.values()].filter((a) => a.status === 'breached').length;
+    // events/sec over the last 5 real seconds
+    const now = Date.now(); S.epsBuf = (S.epsBuf || []).filter((x) => now - x.t < 5000);
+    const eps = S.epsBuf.reduce((s, x) => s + x.n, 0) / 5;
+    set('#kpi-open', open.length); set('#kpi-crit', crit); set('#kpi-high', high); set('#kpi-breach', breach);
+    const epsEl = $('#kpi-eps'); if (epsEl) epsEl.innerHTML = `${eps.toFixed(1)}<span class="kpi-unit">/s</span>`;
+    const trust = Math.round((mt.trust ?? 1) * 100);
+    const tEl = $('#kpi-trust'); if (tEl) tEl.innerHTML = `${trust}<span class="kpi-unit">%</span>`;
+    const tf = $('#trust-fill'); if (tf) tf.style.width = trust + '%';
+    set('#kpi-score', mt.points ?? 0);
+    const st = $('#kpi-status'); if (st) { st.textContent = THREAT_LABEL[mt.attackStatus] || '—'; st.style.color = (mt.attackStatus === 'succeeded' || mt.attackStatus === 'spreading') ? 'var(--crit)' : (mt.attackStatus === 'stopped' || mt.attackStatus === 'gaveup') ? 'var(--ok)' : (mt.attackStatus === 'active') ? 'var(--high)' : 'var(--text2)'; }
+    function set(sel, v) { const e = $(sel); if (e) e.textContent = v; }
   }
 
   // ---------------- alerts ----------------
@@ -206,16 +271,21 @@
     list.innerHTML = '';
     for (const a of arr) {
       const sla = slaInfo(a);
-      const card = el('div', `alert-card sev-${a.severity} st-${a.status}`);
-      if (a.id === S.selectedAlertId) card.classList.add('selected');
+      const tr = el('tr', `incident-row sev-${a.severity} st-${a.status}`);
+      if (a.id === S.selectedAlertId) tr.classList.add('selected');
       const ent = [...(a.entities.hosts || []), ...(a.entities.ips || []), ...(a.entities.users || [])].slice(0, 3).join(' · ');
-      card.innerHTML =
-        `<div class="ac-top"><span class="ac-title">${esc(a.title)}</span><span class="ac-sev">${a.severity}</span></div>` +
-        `<div class="ac-meta"><span class="ac-entities">${esc(ent)}</span><span class="sla ${sla.cls}">${sla.txt}</span></div>` +
-        `<div class="ac-status"><span class="mono">${fmtClock(a.ts)}</span> · ${esc(a.status)}${a.kb ? ' · ' + esc(a.kb.mitre || '') : ''}</div>`;
-      card.onclick = () => selectAlert(a.id);
-      list.appendChild(card);
+      const mitre = (a.kb && a.kb.mitre) ? a.kb.mitre : '';
+      const sub = [mitre, ent].filter(Boolean).join('  ·  ');
+      tr.innerHTML =
+        `<td class="c-sev"><span class="sev-cell sev-${a.severity}"><span class="sev-dot"></span><span class="sev-txt">${a.severity.slice(0, 4)}</span></span></td>` +
+        `<td class="c-time it-time">${fmtClock(a.ts)}</td>` +
+        `<td class="c-rule"><div class="it-rule" title="${esc(a.title)}">${esc(a.title)}</div><div class="it-ent" title="${esc(sub)}">${esc(sub)}</div></td>` +
+        `<td class="c-sla"><span class="sla-pill ${sla.cls}">${sla.txt}</span></td>` +
+        `<td class="c-st"><span class="st-pill ${a.status}">${esc(a.status)}</span></td>`;
+      tr.onclick = () => selectAlert(a.id);
+      list.appendChild(tr);
     }
+    renderKPIs();
   }
   $('#alert-filter').onchange = renderAlerts;
   $('#alert-sort').onchange = renderAlerts;
@@ -340,22 +410,62 @@
   function renderLogs() {
     const body = $('#log-body'); if (!body) return;
     const evs = currentLogEvents();
+    renderHistogram(evs);
     body.innerHTML = '';
     for (const ev of evs) {
+      const isExp = S.expanded.has(ev.id);
       const tr = el('tr', 'log-row'); tr.dataset.id = ev.id;
       if (S.evidence.has(ev.id)) tr.classList.add('selected');
       tr.innerHTML =
         `<td class="c-sel"><input type="checkbox" class="log-check" ${S.evidence.has(ev.id) ? 'checked' : ''}></td>` +
+        `<td class="c-exp"><span class="exp-caret">${isExp ? '▾' : '▸'}</span></td>` +
         `<td class="c-time">${fmtClock(ev.ts)}</td>` +
         `<td class="c-src"><span class="src-tag src-${ev.source}">${ev.source}</span></td>` +
         `<td class="c-host">${esc(ev.host)}</td>` +
         `<td class="c-msg"><span class="log-msg">${esc(ev.message)}</span></td>` +
         `<td class="c-piv"><div class="piv-btns">${pivBtns(ev)}</div></td>`;
       tr.querySelector('.log-check').onchange = (e) => toggleEvidence(ev, e.target.checked);
+      tr.querySelector('.exp-caret').onclick = () => { if (S.expanded.has(ev.id)) S.expanded.delete(ev.id); else S.expanded.add(ev.id); renderLogs(); };
       $$('.piv', tr).forEach((b) => b.onclick = () => pivotFromChip(b.dataset.k, b.dataset.v));
       body.appendChild(tr);
+      if (isExp) {
+        const dr = el('tr', 'log-detail');
+        dr.innerHTML = `<td></td><td></td><td colspan="5">${fieldGrid(ev)}</td>`;
+        body.appendChild(dr);
+        $$('.fpiv', dr).forEach((b) => b.onclick = () => pivotFromChip(b.dataset.k, b.dataset.v));
+      }
     }
-    if (S.live) { const w = $('.log-table-wrap'); w.scrollTop = w.scrollHeight; }
+    if (S.live) { const w = $('.panel-logs .table-scroll'); if (w) w.scrollTop = w.scrollHeight; }
+  }
+  // Splunk-style field extraction shown when a result row is expanded.
+  function fieldGrid(ev) {
+    const rows = [];
+    const add = (k, v, piv) => { if (v == null || v === '') return; rows.push(`<div class="field-kv"><span class="field-k">${esc(k)}</span><span class="field-v">${esc(v)}${piv ? ` <span class="fpiv" data-k="${piv.k}" data-v="${esc(piv.v)}" title="pivot">⧉</span>` : ''}</span></div>`); };
+    add('_time', fmtClock(ev.ts));
+    add('source', ev.source);
+    add('host', ev.host, { k: 'host', v: ev.host });
+    const f = ev.fields || {};
+    for (const [k, v] of Object.entries(f)) {
+      if (v == null || v === '') continue;
+      let piv = null;
+      if (k === 'srcIp' || k === 'dstIp') piv = { k: 'ip', v };
+      else if (k === 'user') piv = { k: 'user', v };
+      add(k, typeof v === 'object' ? JSON.stringify(v) : v, piv);
+    }
+    return `<div class="field-grid">${rows.join('')}</div>`;
+  }
+  // Event-volume histogram over the currently displayed results.
+  function renderHistogram(evs) {
+    const host = $('#log-histogram'); if (!host) return;
+    if (!evs || !evs.length) { host.innerHTML = ''; const l = $('#hist-label'); if (l) l.textContent = ''; return; }
+    const N = 44;
+    const tmin = evs[0].ts, tmax = evs[evs.length - 1].ts;
+    const span = Math.max(1, tmax - tmin);
+    const buckets = new Array(N).fill(0);
+    for (const e of evs) { const i = Math.min(N - 1, Math.floor((e.ts - tmin) / span * N)); buckets[i]++; }
+    const max = Math.max(1, ...buckets);
+    host.innerHTML = buckets.map((c) => `<div class="hbar${c / max > 0.75 ? ' hot' : ''}" style="height:${Math.max(4, Math.round((c / max) * 100))}%"></div>`).join('');
+    const l = $('#hist-label'); if (l) l.textContent = `${evs.length} events · ${fmtClock(tmin)}–${fmtClock(tmax)}`;
   }
   function pivBtns(ev) {
     let h = '';
@@ -473,30 +583,54 @@
     if (name === 'detail') renderAlertDetail(S.alerts.get(S.selectedAlertId));
   }
 
-  // ---------------- clock controls ----------------
-  $('#btn-pause').onclick = () => Net.send(S.meta.paused ? 'resume' : 'pause');
+  // ---------------- speed controls (keyboard shortcut) ----------------
   document.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && !/input|textarea|select/i.test(document.activeElement.tagName)) {
-      e.preventDefault(); Net.send(S.meta.paused ? 'resume' : 'pause');
-    }
+    if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
+    const map = { Digit1: 1, Digit2: 2, Digit4: 4, Digit8: 8 };
+    if (map[e.code]) { e.preventDefault(); Net.send('set_speed', { speed: map[e.code] }); }
   });
-  $('#briefing-dismiss').onclick = () => { $('#briefing').classList.add('hidden'); Net.send('resume'); };
+  $('#briefing-dismiss').onclick = () => { $('#briefing').classList.add('hidden'); };
+
+  // ---------------- left nav rail ----------------
+  $$('.rail-btn').forEach((b) => b.onclick = () => {
+    const nav = b.dataset.nav;
+    if (nav === 'kb') return openKb();
+    if (nav === 'actors') return openDossiers();
+    if (nav === 'report') return Net.send('get_report');
+    if (nav === 'new') return toStartScreen();
+    $$('.rail-btn').forEach((x) => x.classList.toggle('active', x === b));
+    const panelSel = { overview: null, incidents: '.panel-alerts', investigate: '.panel-logs', network: '.panel-map', cases: '.panel-ticket' }[nav];
+    if (panelSel) { const p = $(panelSel); if (p) { p.classList.add('flash'); setTimeout(() => p.classList.remove('flash'), 600); if (nav === 'investigate') $('#log-search').focus(); } }
+  });
+
+  // ---------------- omni search (top bar) → investigation ----------------
+  $('#omni-search').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const q = $('#omni-search').value.trim();
+    $('#log-search').value = q; S.searchText = q;
+    if (!q) { goLive(); return; }
+    S.live = false; setLiveBtn();
+    const query = { q, limit: 400 }; if (S.searchSource) query.source = S.searchSource;
+    setPivotCrumbs([{ kind: 'search', value: q }]);
+    Net.send('search', { query });
+    const p = $('.panel-logs'); if (p) { p.classList.add('flash'); setTimeout(() => p.classList.remove('flash'), 600); }
+  });
 
   // ---------------- modals ----------------
   $('#modal-close').onclick = () => $('#modal').classList.add('hidden');
   function openModal(title, html) { $('#modal-title').textContent = title; $('#modal-body').innerHTML = html; $('#modal').classList.remove('hidden'); return $('#modal-body'); }
 
-  $('#btn-kb').onclick = () => {
+  function openKb() {
     const html = Object.entries(S.kb).map(([k, v]) =>
       `<div class="kb-entry"><h3>${esc(v.title)} <span class="mitre-tag">${esc(v.mitre)}</span></h3>` +
       `<h4>What it means</h4><div class="muted">${esc(v.means)}</div>` +
       `<h4>Benign look-alike</h4><div class="muted">${esc(v.benign)}</div>` +
       `<h4>What to check</h4><ul>${(v.check || []).map((c) => `<li>${esc(c)}</li>`).join('')}</ul></div>`
     ).join('');
-    openModal('📖 Knowledge Base — Alert Explainers', html);
-  };
+    openModal('📖 Knowledge Base — Detection Explainers', html);
+  }
 
-  $('#btn-dossiers').onclick = () => { if (!S.dossiers.length) Net.send('get_dossiers'); setTimeout(renderDossiers, 60); };
+  function openDossiers() { if (!S.dossiers.length) Net.send('get_dossiers'); setTimeout(renderDossiers, 60); }
   function renderDossiers() {
     const html = S.dossiers.map((d) =>
       `<div class="dossier"><div class="arch">${esc(d.archetype)}</div><h3>${esc(d.name)}</h3><div class="muted">${esc(d.summary)}</div>` +
@@ -518,9 +652,7 @@
     openModal('🎭 Threat Actor Dossiers — Read up and attribute', html || '<div class="muted">No dossiers.</div>');
   }
 
-  $('#btn-report').onclick = () => Net.send('get_report');
   function toStartScreen() { $('#modal').classList.add('hidden'); $('#console').classList.add('hidden'); $('#start-screen').classList.remove('hidden'); renderLevels(); }
-  $('#btn-new').onclick = toStartScreen;
 
   function openReport(r) {
     if (!r) return;
