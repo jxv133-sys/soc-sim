@@ -43,7 +43,7 @@ export class GameSession {
     } else {
       this.actor = activeRng.pick(this.roster);
     }
-    this.attack = new AttackEngine(seed, this.actor, this.network, this.personas);
+    this.attack = new AttackEngine(seed, this.actor, this.network, this.personas, { startHour: options.startHour ?? 6 });
     this.detection = new DetectionEngine();
     this.tier2 = new Tier2();
 
@@ -367,6 +367,12 @@ export class GameSession {
     // Damage accounting.
     const infected = gt.infected;
     const crownJewelsHit = infected.filter((i) => this.network.hostById[i.host]?.crownJewel).length;
+    // Business disruption: impacted asset value as a share of the whole estate,
+    // weighted so downing the DC/DB/file server hurts far more than a workstation.
+    const totalValue = this.network.hosts.reduce((s, h) => s + (h.value || 1), 0);
+    const impactedValue = infected.reduce((s, i) => s + (this.network.hostById[i.host]?.value || 1), 0);
+    const businessDisruptionPct = Math.min(100, Math.round((impactedValue / Math.max(1, totalValue)) * 100));
+    const disruptionLabel = businessDisruptionPct === 0 ? 'None' : businessDisruptionPct < 15 ? 'Limited' : businessDisruptionPct < 40 ? 'Serious' : 'Severe';
     const dwell = this.firstMaliciousTs != null
       ? (this.containedTs != null ? this.containedTs : this.simTime) - this.firstMaliciousTs
       : 0;
@@ -377,7 +383,7 @@ export class GameSession {
     const breachedMal = this.alerts.filter((a) => a.status === 'breached' && a._malicious).length;
     const avgQ = this.player.tickets.filter((t) => t.result?.q != null).reduce((s, t, _, arr) => s + t.result.q / arr.length, 0) || 0;
 
-    const outcomeScore = this._scoreOutcome(gt, { crownJewelsHit, dwell, falseEsc, breachedMal, avgQ, goodEsc });
+    const outcomeScore = this._scoreOutcome(gt, { crownJewelsHit, dwell, falseEsc, breachedMal, avgQ, goodEsc, businessDisruptionPct });
 
     return {
       seed: this.seed,
@@ -402,6 +408,7 @@ export class GameSession {
       playerActions: this.player.tickets.map((t) => ({ ts: t.ts, clock: fmtClock(t.ts), alertTitle: t.alertTitle, verdict: t.verdict, action: t.recommendedAction, q: t.result?.q, kind: t.result?.kind })),
       metrics: {
         dwellSeconds: dwell, crownJewelsHit, infectedCount: infected.length,
+        businessDisruptionPct, disruptionLabel,
         falseEscalations: falseEsc, goodEscalations: goodEsc, breachedMaliciousAlerts: breachedMal,
         avgTicketQuality: +avgQ.toFixed(2), hintsUsed: this.player.hintsUsed.length, trust: +this.tier2.trust.toFixed(2),
         detectionCoverage: this._detectionCoverage(timeline),
@@ -426,6 +433,7 @@ export class GameSession {
     else if (gt.status === 'spreading') pts -= 200;
     else if ((gt.status === 'active' || gt.status === 'dormant') && m.crownJewelsHit === 0) pts += 120; // held the line to time-out
     pts -= m.crownJewelsHit * 150;
+    pts -= Math.round((m.businessDisruptionPct || 0) * 2);
     pts -= m.breachedMal * 40;
     pts -= m.falseEsc * 50;
     pts -= this.player.hintsUsed.length * 25;

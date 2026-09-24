@@ -63,6 +63,11 @@ kbd { background:#1b2430; border:1px solid var(--border2); border-bottom-width:2
 .level-item .lv-title { font-weight:600; color:var(--text); }
 .level-item .lv-focus { color: var(--muted); font-size:11px; margin-top:2px; }
 .level-item .lv-num { color: var(--accent); font-family: var(--mono); margin-right:8px; }
+.level-item.lv-next { border-color: var(--accent-dim); box-shadow: 0 0 0 1px var(--accent-dim) inset; }
+.lv-grade { float:right; font-family:var(--mono); font-size:11px; font-weight:700; padding:0 7px; border-radius:4px; border:1px solid; }
+.lv-tag { float:right; font-size:9px; text-transform:uppercase; letter-spacing:.5px; color:var(--accent); border:1px solid var(--accent-dim); border-radius:10px; padding:0 7px; margin-left:6px; }
+.lv-grade.grade-A{color:var(--ok);border-color:var(--ok);} .lv-grade.grade-B{color:var(--accent);border-color:var(--accent-dim);}
+.lv-grade.grade-C{color:var(--med);border-color:var(--med);} .lv-grade.grade-D{color:var(--high);border-color:var(--high);} .lv-grade.grade-F{color:var(--crit);border-color:var(--crit);}
 .fld { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .fld > span { font-size: 11px; color: var(--text2); font-weight: 500; }
 .fld input, .fld select, .fld textarea, .search-input { background: #0b1119; border: 1px solid var(--border2); color: var(--text); border-radius: 6px; padding: 8px 10px; font-family: var(--sans); font-size: 12px; }

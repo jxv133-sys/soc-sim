@@ -12,7 +12,7 @@
     meta: {}, network: null, level: null, users: [], usersByName: {}, hostsById: {},
     alerts: new Map(), events: [], eventsById: new Map(),
     messages: [], msgSeen: new Set(),
-    kb: {}, dossiers: [], hostTags: {},
+    kb: {}, dossiers: [], hostTags: {}, levels: [],
     selectedAlertId: null, evidence: new Map(),
     live: true, pivots: [], searchSource: '', searchText: '', viewEvents: null,
     ended: false,
@@ -33,13 +33,31 @@
 
   fetch('/api/levels').then((r) => r.json()).then((d) => populateLevels(d.levels)).catch(() => {});
 
-  function populateLevels(levels) {
-    if (!levels) return;
-    const list = $('#level-list'); if (!list || list.dataset.filled) return;
-    list.dataset.filled = '1';
-    levels.forEach((lv) => {
+  const GRADE_RANK = { F: 0, D: 1, C: 2, B: 3, A: 4 };
+  function getProgress() { try { return JSON.parse(localStorage.getItem('socsim.progress') || '{}'); } catch { return {}; } }
+  function saveProgress(levelId, grade) {
+    if (!levelId || !grade) return;
+    try {
+      const p = getProgress();
+      if (!(p[levelId] in GRADE_RANK) || GRADE_RANK[grade] > GRADE_RANK[p[levelId]]) { p[levelId] = grade; localStorage.setItem('socsim.progress', JSON.stringify(p)); }
+    } catch { /* private mode: progress simply isn't remembered */ }
+  }
+
+  function populateLevels(levels) { if (levels) S.levels = levels; renderLevels(); }
+  function renderLevels() {
+    const list = $('#level-list'); if (!list || !S.levels.length) return;
+    const prog = getProgress();
+    const firstIncomplete = S.levels.find((lv) => !prog[lv.id]);
+    list.innerHTML = '';
+    S.levels.forEach((lv) => {
       const item = el('div', 'level-item');
-      item.innerHTML = `<div class="lv-title"><span class="lv-num">${lv.id}</span>${esc(lv.title)}</div><div class="lv-focus">${esc(lv.focus)}</div>`;
+      const done = prog[lv.id];
+      if (firstIncomplete && lv.id === firstIncomplete.id) item.classList.add('lv-next');
+      item.innerHTML =
+        `<div class="lv-title"><span class="lv-num">${lv.id}</span>${esc(lv.title)}` +
+        (done ? `<span class="lv-grade grade-${done}">✓ ${done}</span>` : '') +
+        (firstIncomplete && lv.id === firstIncomplete.id ? `<span class="lv-tag">next</span>` : '') +
+        `</div><div class="lv-focus">${esc(lv.focus)}</div>`;
       item.onclick = () => startGame({ level: lv.id });
       list.appendChild(item);
     });
@@ -194,7 +212,7 @@
       card.innerHTML =
         `<div class="ac-top"><span class="ac-title">${esc(a.title)}</span><span class="ac-sev">${a.severity}</span></div>` +
         `<div class="ac-meta"><span class="ac-entities">${esc(ent)}</span><span class="sla ${sla.cls}">${sla.txt}</span></div>` +
-        `<div class="ac-status">${esc(a.status)}${a.kb ? ' · ' + esc(a.kb.mitre || '') : ''}</div>`;
+        `<div class="ac-status"><span class="mono">${fmtClock(a.ts)}</span> · ${esc(a.status)}${a.kb ? ' · ' + esc(a.kb.mitre || '') : ''}</div>`;
       card.onclick = () => selectAlert(a.id);
       list.appendChild(card);
     }
@@ -501,11 +519,13 @@
   }
 
   $('#btn-report').onclick = () => Net.send('get_report');
-  $('#btn-new').onclick = () => { $('#modal').classList.add('hidden'); $('#console').classList.add('hidden'); $('#start-screen').classList.remove('hidden'); };
+  function toStartScreen() { $('#modal').classList.add('hidden'); $('#console').classList.add('hidden'); $('#start-screen').classList.remove('hidden'); renderLevels(); }
+  $('#btn-new').onclick = toStartScreen;
 
   function openReport(r) {
     if (!r) return;
     const m = r.metrics, o = r.outcome, sc = r.score;
+    if (S.level && sc && sc.grade) { saveProgress(S.level.id, sc.grade); renderLevels(); }
     const metric = (v, l) => `<div class="metric"><div class="m-val">${v}</div><div class="m-lbl">${l}</div></div>`;
     let html = `<div class="report-score"><div class="grade-badge grade-${sc.grade}">${sc.grade}</div>` +
       `<div><div style="font-size:18px;font-weight:700">${sc.points} pts — ${esc(sc.verdict)}</div>` +
@@ -518,6 +538,7 @@
       metric(fmtDur(m.dwellSeconds), 'Dwell time') +
       metric(m.crownJewelsHit, 'Crown jewels hit') +
       metric(m.infectedCount, 'Hosts impacted') +
+      metric(`${m.businessDisruptionPct ?? 0}%`, `Business disruption${m.disruptionLabel ? ' — ' + m.disruptionLabel : ''}`) +
       metric(m.detectionCoverage.detectedPct + '%', 'Steps rule-detected') +
       metric(m.detectionCoverage.escalatedPct + '%', 'Steps you escalated') +
       metric(Math.round(m.avgTicketQuality * 100) + '%', 'Avg ticket quality') +
@@ -548,7 +569,7 @@
 
     html += `<div style="margin-top:20px;display:flex;gap:10px"><button class="btn btn-primary" id="rp-again">▶ New Shift</button><button class="btn btn-ghost" id="rp-close">Close</button></div>`;
     const body = openModal('📊 After-Action Report', html);
-    $('#rp-again', body).onclick = () => { $('#modal').classList.add('hidden'); $('#console').classList.add('hidden'); $('#start-screen').classList.remove('hidden'); };
+    $('#rp-again', body).onclick = toStartScreen;
     $('#rp-close', body).onclick = () => $('#modal').classList.add('hidden');
   }
 

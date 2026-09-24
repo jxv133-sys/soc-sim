@@ -41,11 +41,12 @@ const T = {
 const STAGES = ['initial_access', 'persistence', 'discovery', 'credential_access', 'lateral_movement', 'objective'];
 
 export class AttackEngine {
-  constructor(seed, actor, network, personas) {
+  constructor(seed, actor, network, personas, options = {}) {
     this.rng = new RNG(seed).fork('attack');
     this.actor = actor;
     this.network = network;
     this.personas = personas;
+    this.shiftStart = (options.startHour ?? 6) * 3600;
 
     const tr = actor.traits;
     // Trait-derived timing (sim-seconds). Faster/less-patient actors move quicker.
@@ -138,11 +139,22 @@ export class AttackEngine {
       foothold = lm.webServers[0] || rng.pick(lm.workstations);
     }
 
-    // Randomised start time within the day (biased earlier for slow actors).
-    const beginHour = actor.respectsActiveHours
-      ? (actor.activeHours.start + rng.int(0, 4)) % 24
-      : rng.int(1, 22);
-    const beginTs = beginHour * 3600 + rng.int(0, 3600);
+    // Start time: the intrusion must be discoverable during the shift, so it
+    // begins near shift start (sometimes just before, giving pre-existing
+    // malicious activity to find in the logs). For actors that keep their own
+    // working hours, we roll forward to the first moment they'd actually be
+    // active — that constrained window is itself an attribution clue.
+    const shiftStart = this.shiftStart;
+    let base = shiftStart + rng.int(-2 * 3600, 3 * 3600); // −2h .. +3h around shift start
+    if (actor.respectsActiveHours) {
+      let scan = Math.max(0, shiftStart - 2 * 3600);
+      let guard = 0;
+      while (!inHours(scan + actor.activeHours.tzShift * 3600, actor.activeHours.start, actor.activeHours.end) && guard < 96) {
+        scan += 1800; guard++;
+      }
+      base = scan + rng.int(0, 45 * 60);
+    }
+    const beginTs = Math.max(0, base);
 
     return { vector, foothold, primaryTarget, beginTs };
   }
