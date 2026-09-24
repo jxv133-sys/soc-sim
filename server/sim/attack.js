@@ -72,6 +72,7 @@ export class AttackEngine {
     this.resetCreds = new Set();
     this.containedHosts = new Set();
     this.remediatedVector = false;
+    this.reEntries = 0;
 
     this.currentInfraIdx = 0;
     this.timeline = [];
@@ -198,7 +199,9 @@ export class AttackEngine {
 
   // ---- Timeline / evidence recording ----
   _beginStep(stage, tech, host, note) {
-    this._step = { ts: null, stage, mitre: tech?.id || null, technique: tech?.name || null, host, note, evidence: [], detected: false };
+    // Record when this step began so the after-action timeline shows real clock
+    // times (this._lastTs is updated at the top of every tick).
+    this._step = { ts: this._lastTs || 0, stage, mitre: tech?.id || null, technique: tech?.name || null, host, note, evidence: [], detected: false };
     this.timeline.push(this._step);
     return this._step;
   }
@@ -277,8 +280,11 @@ export class AttackEngine {
         // Re-route toward objective from the fallback foothold.
         this.stagePhase = 'idle';
         this.currentStage = 'lateral_movement';
-      } else if (tr.adaptability > 0.7 && !this.actor.givesUpEasily) {
-        // Re-attempt entry from fresh infrastructure.
+      } else if (tr.adaptability > 0.7 && !this.actor.givesUpEasily && !this.remediatedVector && this.reEntries < 2) {
+        // Re-attempt entry from fresh infrastructure — but only a bounded number
+        // of times, so a determined actor doesn't become an endless whack-a-mole.
+        // After that (or if the access vector is remediated) it gives up.
+        this.reEntries = (this.reEntries || 0) + 1;
         this.footholds.clear();
         this.currentStage = null;
         this.stagePhase = 'idle';
@@ -286,9 +292,9 @@ export class AttackEngine {
         this.beginTs = this._lastTs + 300; // brief pause before re-entry
         this.actor.infra.ips.push(this._freshInfra());
         this.currentInfraIdx = this.actor.infra.ips.length - 1;
-        this._note('re-attempting initial access from new infrastructure');
+        this._note(`re-attempting initial access from new infrastructure (attempt ${this.reEntries + 1})`);
       } else {
-        this._terminate('gaveup', 'lost all footholds and did not adapt');
+        this._terminate('gaveup', this.remediatedVector ? 'access vector remediated; no way back in' : 'eradicated from the environment');
       }
     }
   }

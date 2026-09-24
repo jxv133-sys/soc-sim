@@ -302,13 +302,19 @@
     prefillTicket(a);
     // Update the Discover evidence-rail context (shared state across tabs).
     const ctx = $('#disco-context');
-    if (ctx && a) ctx.innerHTML = `Working alert: <b>${esc(a.title)}</b> <span class="muted">(${esc((a.kb && a.kb.mitre) || '')})</span>`;
-    // Load the alert's evidence into Discover so the analyst can pivot from it.
-    if (a && a.evidenceEventIds && a.evidenceEventIds.length) {
-      Net.send('get_events', { ids: a.evidenceEventIds, forAlert: id });
-      setPivotCrumbs([{ kind: 'alert', value: a.title }]);
-    }
+    if (ctx && a) ctx.innerHTML = `Working alert: <b>${esc(a.title)}</b> <span class="muted">(${esc((a.kb && a.kb.mitre) || '')})</span>. Use “Investigate in Discover” to pivot into the surrounding activity.`;
     if (opts.focus) showView('alerts');
+  }
+
+  // Pivot Discover onto an alert's most relevant entity so the analyst lands on
+  // the surrounding activity (context), not just the one triggering log line.
+  function investigateAlert(a) {
+    if (!a) return;
+    const ip = (a.entities.ips || [])[0], host = (a.entities.hosts || [])[0], user = (a.entities.users || [])[0];
+    if (ip) pivotFromChip('ip', ip);
+    else if (host) pivotFromChip('host', host);
+    else if (user) pivotFromChip('user', user);
+    else if (a.evidenceEventIds && a.evidenceEventIds.length) { Net.send('get_events', { ids: a.evidenceEventIds, forAlert: a.id }); setPivotCrumbs([{ kind: 'alert', value: a.title }]); }
   }
 
   // ---------------- alert detail + KB ----------------
@@ -618,7 +624,7 @@
   });
 
   // Cross-view actions — the tabs work together via shared state.
-  $('#btn-investigate').onclick = () => { const a = S.alerts.get(S.selectedAlertId); if (!a) return toast('Select an alert first.'); showView('discover'); if (a.evidenceEventIds && a.evidenceEventIds.length) { Net.send('get_events', { ids: a.evidenceEventIds, forAlert: a.id }); setPivotCrumbs([{ kind: 'alert', value: a.title }]); } };
+  $('#btn-investigate').onclick = () => { const a = S.alerts.get(S.selectedAlertId); if (!a) return toast('Select an alert first.'); showView('discover'); investigateAlert(a); };
   $('#btn-createcase').onclick = () => { if (!S.selectedAlertId) return toast('Select an alert first.'); showView('cases'); };
   $('#disco-tocase').onclick = () => showView('cases');
 

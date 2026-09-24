@@ -438,28 +438,48 @@ export class GameSession {
   }
 
   _scoreOutcome(gt, m) {
-    // Grade A–F from outcome + hygiene.
+    const status = gt.status;
+    const stages = gt.stagesReached.length;
+    const noDamage = m.crownJewelsHit === 0 && (m.businessDisruptionPct || 0) === 0;
     let pts = 1000;
-    if (gt.status === 'stopped') pts += 400;
-    else if (gt.status === 'gaveup') pts += 200;
-    else if (gt.status === 'succeeded') pts -= 300;
-    else if (gt.status === 'spreading') pts -= 200;
-    else if ((gt.status === 'active' || gt.status === 'dormant') && m.crownJewelsHit === 0) pts += 120; // held the line to time-out
-    pts -= m.crownJewelsHit * 150;
-    pts -= Math.round((m.businessDisruptionPct || 0) * 2);
-    pts -= m.breachedMal * 40;
-    pts -= m.falseEsc * 50;
+
+    // Outcome base. Driving the attacker off is nearly as good as a coordinated
+    // eradication; holding the line to time-out with no damage is still a win.
+    if (status === 'stopped') pts += 450;
+    else if (status === 'gaveup') pts += 380;
+    else if (status === 'active' || status === 'dormant') pts += noDamage ? 260 : 60;
+    else if (status === 'spreading') pts -= 250;
+    else if (status === 'succeeded') pts -= 350;
+
+    // Reward catching it before it got deep into the chain.
+    if (noDamage && stages <= 2) pts += 130;
+    else if (noDamage && stages <= 3) pts += 60;
+
+    // Damage.
+    pts -= m.crownJewelsHit * 160;
+    pts -= Math.round((m.businessDisruptionPct || 0) * 2.5);
+
+    // Hygiene + ticket quality.
+    pts += Math.round(m.avgQ * 220);
+    pts -= m.breachedMal * 30;
+    pts -= m.falseEsc * 60;
     pts -= this.player.hintsUsed.length * 25;
-    pts += Math.round(m.avgQ * 200);
-    pts -= Math.min(300, Math.round(m.dwell / 60) * 5);
-    pts = Math.max(0, pts);
-    const grade = pts >= 1400 ? 'A' : pts >= 1150 ? 'B' : pts >= 900 ? 'C' : pts >= 650 ? 'D' : 'F';
+    // Dwell matters but never dominates (capped); irrelevant if never contained.
+    pts -= Math.min(150, Math.round(m.dwell / 60) * 3);
+
+    pts = Math.max(0, Math.round(pts));
+    let grade = pts >= 1550 ? 'A' : pts >= 1200 ? 'B' : pts >= 950 ? 'C' : pts >= 650 ? 'D' : 'F';
+    // Damage gates the top grades: any crown-jewel loss caps at C, any business
+    // disruption caps at B, no matter how clean the rest of the shift was.
+    if (m.crownJewelsHit > 0 && 'AB'.includes(grade)) grade = 'C';
+    else if (!noDamage && grade === 'A') grade = 'B';
+
     let verdict;
-    if (gt.status === 'stopped' && m.crownJewelsHit === 0) verdict = gt.stagesReached.length <= 2 ? 'Excellent — caught during initial access, nothing was compromised.' : 'Good — attacker was stopped mid-chain with limited damage.';
-    else if (gt.status === 'gaveup') verdict = 'The attacker gave up after being disrupted — solid pressure.';
-    else if (gt.status === 'succeeded' || gt.status === 'spreading') verdict = 'Missed — the attacker achieved its objective. Study the timeline below.';
-    else if (m.crownJewelsHit === 0 && (gt.status === 'active' || gt.status === 'dormant')) verdict = 'Held the line — you disrupted the intrusion enough that it never reached its objective before the day ended, though it was never fully eradicated.';
-    else verdict = 'Time expired with the intrusion unresolved.';
+    if (status === 'stopped') verdict = noDamage ? (stages <= 2 ? 'Excellent — caught during initial access and eradicated; nothing was compromised.' : 'Strong work — the intrusion was contained and eradicated before it did damage.') : 'Contained and eradicated, but some hosts were hit before you shut it down.';
+    else if (status === 'gaveup') verdict = noDamage ? 'Excellent — sustained pressure drove the attacker out with no damage done.' : 'The attacker withdrew, but not before causing some damage.';
+    else if (status === 'succeeded' || status === 'spreading') verdict = 'Missed — the attacker reached its objective. Study the timeline below to see where it could have been stopped.';
+    else if (noDamage) verdict = 'Held the line — the intrusion never reached its objective, though it was not fully eradicated by shift end.';
+    else verdict = 'Shift ended with the intrusion unresolved and damage on the board.';
     return { points: pts, grade, verdict };
   }
 }
