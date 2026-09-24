@@ -67,9 +67,10 @@ test('actor traits drive behavior and roster is attributable', () => {
 });
 
 test('Requirement 2: alerts emerge from rules and false positives dominate naturally', () => {
-  const g = new GameSession('detect-1', { startHour: 5, speed: 8 });
+  const g = new GameSession('detect-1', { startHour: 8, speed: 8 });
   g.setPaused(false);
-  for (let t = 0; t < 300; t++) g.tick();
+  // Run a few sim-hours of a busy office day so a representative queue builds.
+  for (let t = 0; t < 900 && !g.ended; t++) g.tick();
   const alerts = [...g.alerts.values()];
   assert.ok(alerts.length > 5, 'rules should fire alerts from the log stream');
   const benign = alerts.filter((a) => !a._malicious).length;

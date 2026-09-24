@@ -144,10 +144,14 @@ export function generateActor(seed, archetypeKey, idx = 0) {
   }
   const infra = infraIps(rng, arch.reuseInfra);
   const objective = rng.pick(arch.objectives);
-  // Active hours as a timezone-shifted working window (a calling card).
-  const tzShift = rng.int(-9, 9);
-  const workStart = arch.respectsActiveHours ? (9 + tzShift + 24) % 24 : 0;
-  const workEnd = arch.respectsActiveHours ? (18 + tzShift + 24) % 24 : 24;
+  // Active hours are expressed directly in the target's (log) timezone — the
+  // hours the player observes activity cluster in. The window opens in the
+  // morning (so it overlaps the analyst's shift and the queue is never dead)
+  // and its exact edges vary per actor, which is a real attribution signal:
+  // an experienced player learns "this group goes quiet after ~16:00".
+  const workStart = arch.respectsActiveHours ? rng.int(6, 8) : 0;
+  const workEnd = arch.respectsActiveHours ? Math.min(23, workStart + rng.int(9, 11)) : 24;
+  const tzShift = arch.respectsActiveHours ? 9 - workStart : 0; // nominal offset from a 09:00 norm, for dossier flavour
 
   // Mint malware families this actor prefers.
   const families = arch.malware.map((cat) => generateFamily(rng, cat));

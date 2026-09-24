@@ -46,8 +46,8 @@ wss.on('connection', (ws) => {
     const finalSeed = seed && String(seed).trim() ? String(seed).trim() : randomSeed();
     const lvl = level ? getLevel(level) : null;
     const opts = lvl
-      ? { allowArchetypes: lvl.allowArchetypes || undefined, actor: lvl.allowArchetypes && lvl.allowArchetypes.length === 1 ? lvl.allowArchetypes[0] : undefined, startHour: lvl.startHour, speed: 2 }
-      : { startHour: 6, speed: 2 };
+      ? { allowArchetypes: lvl.allowArchetypes || undefined, actor: lvl.allowArchetypes && lvl.allowArchetypes.length === 1 ? lvl.allowArchetypes[0] : undefined, startHour: lvl.startHour, speed: 1 }
+      : { startHour: 8, speed: 1 };
     const session = new GameSession(finalSeed, opts);
     conn.session = session;
 

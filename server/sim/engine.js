@@ -17,9 +17,14 @@ import { fmtClock, hourOf } from './time.js';
 import { ALERT_KB, actorDossier } from './knowledge.js';
 import { generateBackground } from './behavior.js';
 
+// Clock calibration. At 1x the sim advances 2 sim-seconds per 500ms tick — i.e.
+// ~4 sim-seconds per real second, so a 5-minute (300s) critical SLA gives the
+// analyst ~75 real seconds to react, and the log stream is a readable trickle
+// rather than a blur. Faster speeds are for skipping quiet stretches; 0.5x is
+// for careful work during a busy incident.
 const REAL_TICK_MS = 500;         // wall-clock interval between ticks
-const SIM_STEP_AT_1X = 15;        // sim-seconds advanced per tick at speed 1x
-const SPEEDS = [1, 2, 4, 8];
+const SIM_STEP_AT_1X = 2;         // sim-seconds advanced per tick at speed 1x
+const SPEEDS = [0.5, 1, 2, 4, 8];
 const MAX_EVENTS = 60000;         // safety cap on stored events
 
 export class GameSession {
@@ -43,13 +48,13 @@ export class GameSession {
     } else {
       this.actor = activeRng.pick(this.roster);
     }
-    this.attack = new AttackEngine(seed, this.actor, this.network, this.personas, { startHour: options.startHour ?? 6 });
+    this.attack = new AttackEngine(seed, this.actor, this.network, this.personas, { startHour: options.startHour ?? 8 });
     this.detection = new DetectionEngine();
     this.tier2 = new Tier2();
 
     // --- Clock / control ---
-    this.simTime = (options.startHour ?? 6) * 3600; // begin at 06:00 by default
-    this.speed = options.speed ?? 2;
+    this.simTime = (options.startHour ?? 8) * 3600; // begin mid-morning, office busy
+    this.speed = options.speed ?? 1; // start at the calm baseline speed
     this.paused = true; // start paused so the player can get oriented
     this.ended = false;
     this.startedRealTs = Date.now();

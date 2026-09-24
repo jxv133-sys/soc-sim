@@ -12,7 +12,7 @@ export const LEVELS = [
     title: 'First Shift: Failed Logins',
     focus: 'Brute force vs. fumbled passwords',
     allowArchetypes: ['script_kiddie'],
-    startHour: 6,
+    startHour: 8,
     brief:
       'Welcome to your first shift. Watch the alert queue. Today you will mostly see authentication alerts. Some are real password-guessing from the internet; many are just staff mistyping their passwords. Learn to tell them apart before you escalate.',
     goals: [
@@ -27,7 +27,7 @@ export const LEVELS = [
     title: 'Web Exposure',
     focus: 'Web exploitation and the web-shell tell',
     allowArchetypes: ['hacktivist', 'script_kiddie'],
-    startHour: 6,
+    startHour: 8,
     brief:
       'Your DMZ web server faces the internet, so it is scanned constantly. Most injection-looking requests are harmless scanners and crawlers. The one that matters is the request that makes the web server spawn a shell — web servers serve pages, they do not run cmd or /bin/sh.',
     goals: [
@@ -42,7 +42,7 @@ export const LEVELS = [
     title: 'Phishing to Foothold',
     focus: 'Email lure → Office spawns PowerShell',
     allowArchetypes: ['crime_crew'],
-    startHour: 6,
+    startHour: 8,
     brief:
       'A criminal crew is phishing your staff. A suspicious email alone is low-signal, but when a user opens the attachment you will see Office spawn an obfuscated PowerShell — that is the foothold. Move before they establish persistence and move laterally.',
     goals: [
@@ -57,7 +57,7 @@ export const LEVELS = [
     title: 'Living Off the Land',
     focus: 'Discovery, credential dumping, lateral movement',
     allowArchetypes: ['crime_crew'],
-    startHour: 5,
+    startHour: 8,
     brief:
       'This crew avoids malware where it can, using built-in tools (PsExec, WMI, PowerShell). The hard part: admins use those same tools legitimately. Build timelines on hosts and follow the chain — credential dumping (LSASS) and remote execution are your high-fidelity anchors.',
     goals: [
@@ -72,7 +72,7 @@ export const LEVELS = [
     title: 'The Quiet Ones',
     focus: 'Stealthy espionage and attribution',
     allowArchetypes: ['apt'],
-    startHour: 4,
+    startHour: 8,
     brief:
       'A patient, skilled group is after your data, not your money. They are quiet and operate on a consistent schedule. Signals will be sparse — an off-hours login here, a large outbound transfer there. Read the group dossiers and match tooling, timezone and infrastructure to attribute the intrusion.',
     goals: [
@@ -87,7 +87,7 @@ export const LEVELS = [
     title: 'Insider Threat',
     focus: 'Malicious use of legitimate access',
     allowArchetypes: ['insider'],
-    startHour: 7,
+    startHour: 9,
     brief:
       'There is no break-in this time. Someone who already has valid credentials is abusing them — accessing data or hosts outside their normal pattern. No exploits, no malware droppers; just legitimate logons doing illegitimate things. Compare behavior against each user\'s persona.',
     goals: [
@@ -102,7 +102,7 @@ export const LEVELS = [
     title: 'Free Play',
     focus: 'Any actor, any objective, random seed',
     allowArchetypes: null,
-    startHour: 6,
+    startHour: 8,
     brief:
       'No training wheels. A random seed generates a fresh network, a fresh set of users, and one of any known group with any objective. Triage the queue, investigate, attribute, and escalate well-written tickets. Good luck, analyst.',
     goals: [

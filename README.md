@@ -132,6 +132,13 @@ npm run dev
 
 Keyboard: **Space** pauses/resumes.
 
+**Pacing.** The shift starts paused at 08:00 (a busy office, so there's benign
+activity to triage immediately). The default **1×** speed advances ~4 sim-seconds
+per real second — a critical alert's 5-minute SLA gives you about 75 real seconds
+to react, and logs arrive as a readable trickle. Drop to **0.5×** during a hectic
+incident, or jump to **4× / 8×** to fast-forward quiet stretches. When in doubt,
+pause and investigate.
+
 ---
 
 ## Extending the simulator

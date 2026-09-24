@@ -145,16 +145,26 @@ export class AttackEngine {
     // working hours, we roll forward to the first moment they'd actually be
     // active — that constrained window is itself an attribution clue.
     const shiftStart = this.shiftStart;
-    let base = shiftStart + rng.int(-2 * 3600, 3 * 3600); // −2h .. +3h around shift start
+    const maxDelay = 60 * 60; // never let the intrusion sit idle more than 60 sim-min into the shift
+    // A negative offset means the attacker is already underway at shift start
+    // (simTime begins at shift start, so it acts from the first tick); a small
+    // positive offset gives a short calm ramp. This keeps the default 1x pace
+    // from feeling empty while still varying when the intrusion appears.
+    let base = shiftStart + rng.int(-45 * 60, 30 * 60);
     if (actor.respectsActiveHours) {
-      let scan = Math.max(0, shiftStart - 2 * 3600);
+      // Roll forward to the first moment this actor would be active, but cap the
+      // wait — a fixed-hours actor whose window opens later still opens its
+      // account near shift start rather than leaving the queue empty for hours.
+      let scan = Math.max(0, shiftStart - 30 * 60);
       let guard = 0;
-      while (!inHours(scan + actor.activeHours.tzShift * 3600, actor.activeHours.start, actor.activeHours.end) && guard < 96) {
-        scan += 1800; guard++;
+      while (!inHours(scan, actor.activeHours.start, actor.activeHours.end) && scan < shiftStart + maxDelay && guard < 200) {
+        scan += 900; guard++;
       }
-      base = scan + rng.int(0, 45 * 60);
+      base = inHours(scan, actor.activeHours.start, actor.activeHours.end)
+        ? scan + rng.int(0, 20 * 60)
+        : shiftStart + rng.int(0, 30 * 60);
     }
-    const beginTs = Math.max(0, base);
+    const beginTs = Math.max(0, Math.min(base, shiftStart + maxDelay));
 
     return { vector, foothold, primaryTarget, beginTs };
   }
@@ -328,10 +338,11 @@ export class AttackEngine {
     return ev;
   }
 
-  // Whether the actor may act right now (respects its own working hours).
+  // Whether the actor may act right now (respects its own working hours, which
+  // are already expressed in the target/log timezone).
   _canActNow(ts) {
     if (!this.actor.respectsActiveHours) return true;
-    return inHours(ts + this.actor.activeHours.tzShift * 3600, this.actor.activeHours.start, this.actor.activeHours.end);
+    return inHours(ts, this.actor.activeHours.start, this.actor.activeHours.end);
   }
 
   // ---- Main per-tick update ----
