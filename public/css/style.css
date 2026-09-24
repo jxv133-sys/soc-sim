@@ -146,13 +146,33 @@ kbd { background:#2b2d36; border:1px solid var(--border2); border-bottom-width:2
 .knav-item.active { background:rgba(0,191,179,.14); color:var(--teal); font-weight:600; box-shadow:inset 2px 0 0 var(--teal); }
 .knav-end { margin-top:auto; color:var(--muted); }
 
-.grid {
-  flex:1; display:grid; gap:8px; padding:8px; min-height:0;
-  grid-template-columns:392px minmax(0,1fr) 376px;
-  grid-template-rows:minmax(0,1.12fr) minmax(0,1fr);
-  grid-template-areas:"alerts map ticket" "alerts logs ticket";
-}
-.panel-alerts { grid-area:alerts; } .panel-map { grid-area:map; } .panel-ticket { grid-area:ticket; } .panel-logs { grid-area:logs; }
+/* Views: one Elastic-style tab visible at a time */
+.views { flex:1; display:flex; min-height:0; }
+.view { flex:1; display:flex; min-height:0; padding:8px; }
+.view.hidden { display:none; }
+.split-2 { flex:1; display:grid; grid-template-columns:1.5fr 1fr; gap:8px; min-height:0; }
+.split-discover { flex:1; display:grid; grid-template-columns:minmax(0,1fr) 296px; gap:8px; min-height:0; }
+.split-2 > .panel, .split-discover > .panel { min-height:0; }
+.view .panel-map { flex:1; }
+.detail-actions { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--border); }
+.discover-rail .rail-body { padding:12px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
+.disco-context { line-height:1.5; }
+
+/* Overview dashboard */
+.ov-grid { flex:1; display:grid; gap:8px; min-height:0; grid-template-columns:1.3fr 1fr; grid-template-rows:auto minmax(0,1fr); grid-template-areas:"threat activity" "recent activity"; }
+.ov-threat { grid-area:threat; } .ov-recent { grid-area:recent; } .ov-activity { grid-area:activity; }
+.ov-threat-body { padding:16px; }
+.ov-status-big { font-size:26px; font-weight:800; letter-spacing:-.4px; }
+.ov-status-sub { margin-top:4px; }
+.ov-sevrow { display:flex; gap:10px; margin-top:16px; }
+.ov-sev { flex:1; background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:12px 10px; text-align:center; }
+.ov-sev-n { display:block; font-size:24px; font-weight:800; } .ov-sev-l { font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); }
+.ov-sev.sev-critical .ov-sev-n{color:var(--crit);} .ov-sev.sev-high .ov-sev-n{color:var(--high);} .ov-sev.sev-medium .ov-sev-n{color:var(--med);} .ov-sev.sev-low .ov-sev-n{color:var(--low);}
+.ov-alert-list { flex:1; overflow:auto; }
+.ov-alert-item { display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--border); cursor:pointer; font-size:12px; }
+.ov-alert-item:hover { background:var(--panel3); }
+.ova-time { font-family:var(--mono); font-size:11px; color:var(--muted); }
+.ova-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .panel { background:var(--panel); border:1px solid var(--border); border-radius:6px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 .panel.flash { border-color:var(--teal); box-shadow:0 0 0 1px var(--teal) inset; }
 .panel-head { display:flex; align-items:center; justify-content:space-between; padding:9px 12px; border-bottom:1px solid var(--border); }
@@ -314,8 +334,9 @@ kbd { background:#2b2d36; border:1px solid var(--border2); border-bottom-width:2
 ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--border); border-radius:5px; } ::-webkit-scrollbar-thumb:hover { background:var(--border2); }
 
-@media (max-width: 1320px) {
-  .knav { width:56px; } .knav-item span { display:none; } .knav-brand span, .knav-section { display:none; }
+@media (max-width: 1180px) {
+  .knav { width:52px; } .knav-item span { display:none; } .knav-brand span, .knav-section { display:none; }
   .knav-item { justify-content:center; }
-  .grid { grid-template-columns:320px 1fr; grid-template-rows:auto auto auto; grid-template-areas:"alerts map" "alerts logs" "ticket ticket"; }
+  .split-2, .split-discover { grid-template-columns:1fr; grid-template-rows:1fr 1fr; }
+  .ov-grid { grid-template-columns:1fr; grid-template-rows:auto auto 1fr; grid-template-areas:"threat" "activity" "recent"; }
 }

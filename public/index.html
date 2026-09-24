@@ -88,9 +88,9 @@
         <div class="knav-brand"><span class="elastic-mark"><i></i><i></i><i></i><i></i></span><span>Security</span></div>
         <div class="knav-section">Analytics</div>
         <button class="knav-item" data-nav="overview" title="Overview"><i>▤</i><span>Overview</span></button>
-        <button class="knav-item" data-nav="investigate" title="Discover"><i>⌕</i><span>Discover</span></button>
+        <button class="knav-item" data-nav="discover" title="Discover"><i>⌕</i><span>Discover</span></button>
         <div class="knav-section">Security</div>
-        <button class="knav-item active" data-nav="incidents" title="Alerts"><i>▦</i><span>Alerts</span></button>
+        <button class="knav-item active" data-nav="alerts" title="Alerts"><i>▦</i><span>Alerts</span></button>
         <button class="knav-item" data-nav="cases" title="Cases"><i>✎</i><span>Cases</span></button>
         <button class="knav-item" data-nav="network" title="Network"><i>◇</i><span>Network</span></button>
         <div class="knav-section">Intelligence</div>
@@ -101,151 +101,197 @@
       </nav>
 
       <!-- Main grid -->
-      <main class="grid">
-        <!-- Incidents table -->
-        <section class="panel panel-alerts" data-panel="incidents">
-          <div class="panel-head">
-            <h2>Alerts <span class="count-badge" id="alert-count">0</span></h2>
-            <div class="panel-tools">
-              <select id="alert-sort" class="mini-select" title="Sort">
-                <option value="sla">Sort: SLA</option>
-                <option value="severity">Sort: Severity</option>
-                <option value="time">Sort: Newest</option>
-              </select>
-              <select id="alert-filter" class="mini-select" title="Filter">
-                <option value="open">Open</option>
-                <option value="all">All</option>
-                <option value="new">New</option>
-                <option value="escalated">Escalated</option>
-                <option value="dismissed">Dismissed</option>
-                <option value="breached">Breached</option>
-              </select>
+      <!-- Main area: one Elastic-style view at a time (they share state) -->
+      <main class="views">
+
+        <!-- OVERVIEW -->
+        <section class="view" data-view="overview">
+          <div class="ov-grid">
+            <div class="panel ov-threat">
+              <div class="panel-head"><h2>Threat status</h2></div>
+              <div class="ov-threat-body">
+                <div class="ov-status-big" id="ov-status">—</div>
+                <div class="ov-status-sub muted small" id="ov-status-sub">Awaiting activity…</div>
+                <div class="ov-sevrow" id="ov-sevrow"></div>
+              </div>
             </div>
-          </div>
-          <div class="table-scroll">
-            <table class="incident-table">
-              <thead><tr>
-                <th class="c-sev">Severity</th><th class="c-time">@timestamp</th><th class="c-rule">Rule</th>
-                <th class="c-sla">SLA</th><th class="c-st">Status</th>
-              </tr></thead>
-              <tbody id="alert-list"></tbody>
-            </table>
+            <div class="panel ov-recent">
+              <div class="panel-head"><h2>Recent alerts</h2><span class="muted small">click to open</span></div>
+              <div class="ov-alert-list" id="ov-alerts"></div>
+            </div>
+            <div class="panel ov-activity">
+              <div class="panel-head"><h2>Tier 2 activity <span class="count-badge" id="t2-count">0</span></h2></div>
+              <div class="tab-body"><div class="t2-feed"><div class="muted small pad">Tier 2 activity will appear here.</div></div></div>
+            </div>
           </div>
         </section>
 
-        <!-- Network map -->
-        <section class="panel panel-map" data-panel="network">
-          <div class="panel-head">
-            <h2>Network <span class="muted small mono" id="map-org"></span></h2>
-            <div class="panel-tools">
-              <span class="legend"><i class="lg lg-dmz"></i>DMZ</span>
-              <span class="legend"><i class="lg lg-corp"></i>Corp</span>
-              <span class="legend"><i class="lg lg-servers"></i>Servers</span>
-              <span class="legend"><i class="lg lg-mgmt"></i>Mgmt</span>
-              <span class="legend"><i class="lg lg-impact"></i>Impact</span>
-            </div>
-          </div>
-          <div id="cy" class="cy"></div>
-          <div class="map-foot" id="map-foot"><span class="muted small">Live traffic flows across permitted links. Click a host to investigate or tag it. Fog of war: only observed impact is shown here.</span></div>
-        </section>
-
-        <!-- Case / Escalation -->
-        <section class="panel panel-ticket" data-panel="cases">
-          <div class="tabs" id="right-tabs">
-            <button class="tab active" data-tab="ticket">Escalation</button>
-            <button class="tab" data-tab="detail">Analytics</button>
-            <button class="tab" data-tab="tier2">Tier 2 <span class="count-badge" id="t2-count">0</span></button>
-          </div>
-
-          <div class="tab-body" data-body="ticket">
-            <div id="ticket-empty" class="muted small pad">Select an incident, gather evidence, and raise a case to Tier 2.</div>
-            <form id="ticket-form" class="ticket-form hidden">
-              <div class="tf-alert" id="tf-alert"></div>
-              <label class="fld"><span>Disposition</span>
-                <div class="seg-radio">
-                  <label><input type="radio" name="verdict" value="escalate" checked /><span>Escalate (true positive)</span></label>
-                  <label><input type="radio" name="verdict" value="false_positive" /><span>False positive</span></label>
+        <!-- ALERTS -->
+        <section class="view hidden" data-view="alerts">
+          <div class="split-2">
+            <section class="panel panel-alerts">
+              <div class="panel-head">
+                <h2>Alerts <span class="count-badge" id="alert-count">0</span></h2>
+                <div class="panel-tools">
+                  <select id="alert-sort" class="mini-select" title="Sort">
+                    <option value="sla">Sort: SLA</option>
+                    <option value="severity">Sort: Severity</option>
+                    <option value="time">Sort: Newest</option>
+                  </select>
+                  <select id="alert-filter" class="mini-select" title="Filter">
+                    <option value="open">Open</option>
+                    <option value="all">All</option>
+                    <option value="new">New</option>
+                    <option value="escalated">Escalated</option>
+                    <option value="dismissed">Dismissed</option>
+                    <option value="breached">Breached</option>
+                  </select>
                 </div>
-              </label>
-              <div class="fld-row">
-                <label class="fld"><span>Severity</span>
-                  <select name="severity" id="tf-severity">
-                    <option value="low">Low</option><option value="medium">Medium</option>
-                    <option value="high">High</option><option value="critical">Critical</option>
-                  </select>
-                </label>
-                <label class="fld"><span>Recommended action</span>
-                  <select name="recommendedAction" id="tf-action">
-                    <option value="isolate_host">Isolate host</option>
-                    <option value="reset_credentials">Reset credentials</option>
-                    <option value="disable_account">Disable account</option>
-                    <option value="block_ip">Block IP</option>
-                    <option value="remediate_vector">Remediate vector / patch</option>
-                    <option value="full_remediation">Full remediation</option>
-                    <option value="monitor">Monitor only</option>
-                  </select>
-                </label>
               </div>
-              <label class="fld"><span>Affected hosts <span class="muted small">(comma-separated)</span></span>
-                <input type="text" id="tf-hosts" placeholder="e.g. web01, db01" /></label>
-              <label class="fld"><span>Affected accounts <span class="muted small">(comma-separated)</span></span>
-                <input type="text" id="tf-accounts" placeholder="e.g. jsmith" /></label>
-              <label class="fld"><span>Source IPs <span class="muted small">(comma-separated)</span></span>
-                <input type="text" id="tf-ips" placeholder="e.g. 185.23.4.7" /></label>
-              <div class="fld">
-                <span>Evidence <span class="muted small">(select log lines in the search view)</span></span>
-                <div class="evidence-tray" id="evidence-tray"><span class="muted small">No evidence attached.</span></div>
+              <div class="table-scroll">
+                <table class="incident-table">
+                  <thead><tr>
+                    <th class="c-sev">Severity</th><th class="c-time">@timestamp</th><th class="c-rule">Rule</th>
+                    <th class="c-sla">SLA</th><th class="c-st">Status</th>
+                  </tr></thead>
+                  <tbody id="alert-list"></tbody>
+                </table>
               </div>
-              <label class="fld"><span>Analyst notes</span>
-                <textarea id="tf-notes" rows="2" placeholder="Summary for Tier 2…"></textarea></label>
-              <div class="tf-actions">
-                <button type="button" id="btn-hint" class="btn btn-ghost btn-sm" title="Costs 25 points">💡 Hint (-25)</button>
-                <button type="submit" class="btn btn-primary">Escalate to Tier 2 ▶</button>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><h2>Alert detail</h2></div>
+              <div class="tab-body"><div id="alert-detail" class="alert-detail"><div class="muted small pad">Select an alert to see its analytics and knowledge-base explainer.</div></div></div>
+              <div class="detail-actions" id="detail-actions">
+                <button class="btn btn-sm" id="btn-investigate">🔎 Investigate in Discover</button>
+                <button class="btn btn-primary btn-sm" id="btn-createcase">✎ Open case</button>
               </div>
-            </form>
-          </div>
-
-          <div class="tab-body hidden" data-body="detail">
-            <div id="alert-detail" class="alert-detail"><div class="muted small pad">Select an incident to see analytics and its knowledge-base explainer.</div></div>
-          </div>
-
-          <div class="tab-body hidden" data-body="tier2">
-            <div class="t2-feed" id="t2-feed"><div class="muted small pad">Tier 2 activity will appear here.</div></div>
+            </section>
           </div>
         </section>
 
-        <!-- Discover -->
-        <section class="panel panel-logs" data-panel="investigate">
-          <div class="panel-head">
-            <h2>Discover</h2>
-            <span class="hist-label muted small" id="hist-label">events</span>
+        <!-- DISCOVER -->
+        <section class="view hidden" data-view="discover">
+          <div class="split-discover">
+            <section class="panel panel-logs">
+              <div class="panel-head">
+                <h2>Discover</h2>
+                <span class="hist-label muted small" id="hist-label">events</span>
+              </div>
+              <div class="kql-bar">
+                <span class="kql-badge">telemetry-*</span>
+                <div class="kql-input-wrap">
+                  <span class="kql-ico">⌕</span>
+                  <input id="log-search" type="text" class="kql-input" placeholder="Filter your data using KQL syntax…" />
+                </div>
+                <select id="log-source" class="mini-select" title="event.dataset">
+                  <option value="">event.dataset : *</option>
+                  <option value="auth">auth</option><option value="web">web</option>
+                  <option value="process">process</option><option value="network">network</option>
+                  <option value="dns">dns</option><option value="file">file</option>
+                  <option value="email">email</option><option value="firewall">firewall</option>
+                </select>
+                <div class="datepicker" id="datepicker"><span class="dp-ico">🕒</span><span class="dp-label" id="dp-label">Live</span></div>
+                <button id="log-refresh" class="euibtn-teal" title="Refresh">↻ Refresh</button>
+                <button id="log-live" class="euibtn-empty active" title="Live tail">● Live</button>
+                <span class="pivot-crumbs" id="pivot-crumbs"></span>
+              </div>
+              <div class="histogram-wrap"><div class="histogram" id="log-histogram"></div></div>
+              <div class="table-scroll">
+                <table class="log-table">
+                  <thead><tr><th class="c-sel"></th><th class="c-exp"></th><th class="c-time">@timestamp</th><th class="c-src">event.dataset</th><th class="c-host">host.name</th><th class="c-msg">message</th><th class="c-piv">pivot</th></tr></thead>
+                  <tbody id="log-body"></tbody>
+                </table>
+              </div>
+            </section>
+            <aside class="panel discover-rail">
+              <div class="panel-head"><h2>Evidence</h2></div>
+              <div class="rail-body">
+                <div id="disco-context" class="disco-context muted small">No alert selected. Tick log lines to collect evidence for a case.</div>
+                <div class="evidence-tray"><span class="muted small">No evidence attached.</span></div>
+                <button id="disco-tocase" class="btn btn-primary btn-sm">Add to case ▶</button>
+              </div>
+            </aside>
           </div>
-          <div class="kql-bar">
-            <span class="kql-badge">telemetry-*</span>
-            <div class="kql-input-wrap">
-              <span class="kql-ico">⌕</span>
-              <input id="log-search" type="text" class="kql-input" placeholder="Filter your data using KQL syntax…" />
+        </section>
+
+        <!-- NETWORK -->
+        <section class="view hidden" data-view="network">
+          <section class="panel panel-map">
+            <div class="panel-head">
+              <h2>Network <span class="muted small mono" id="map-org"></span></h2>
+              <div class="panel-tools">
+                <span class="legend"><i class="lg lg-dmz"></i>DMZ</span>
+                <span class="legend"><i class="lg lg-corp"></i>Corp</span>
+                <span class="legend"><i class="lg lg-servers"></i>Servers</span>
+                <span class="legend"><i class="lg lg-mgmt"></i>Mgmt</span>
+                <span class="legend"><i class="lg lg-impact"></i>Impact</span>
+              </div>
             </div>
-            <select id="log-source" class="mini-select" title="event.dataset">
-              <option value="">event.dataset : *</option>
-              <option value="auth">auth</option><option value="web">web</option>
-              <option value="process">process</option><option value="network">network</option>
-              <option value="dns">dns</option><option value="file">file</option>
-              <option value="email">email</option><option value="firewall">firewall</option>
-            </select>
-            <div class="datepicker" id="datepicker"><span class="dp-ico">🕒</span><span class="dp-label" id="dp-label">Live</span></div>
-            <button id="log-refresh" class="euibtn-teal" title="Refresh">↻ Refresh</button>
-            <button id="log-live" class="euibtn-empty active" title="Live tail">● Live</button>
-            <span class="pivot-crumbs" id="pivot-crumbs"></span>
-          </div>
-          <div class="histogram-wrap"><div class="histogram" id="log-histogram"></div></div>
-          <div class="table-scroll">
-            <table class="log-table">
-              <thead><tr><th class="c-sel"></th><th class="c-exp"></th><th class="c-time">@timestamp</th><th class="c-src">event.dataset</th><th class="c-host">host.name</th><th class="c-msg">message</th><th class="c-piv">pivot</th></tr></thead>
-              <tbody id="log-body"></tbody>
-            </table>
+            <div id="cy" class="cy"></div>
+            <div class="map-foot" id="map-foot"><span class="muted small">Live traffic flows along permitted links. Click a host to investigate or tag it. Fog of war: only observed impact is shown here.</span></div>
+          </section>
+        </section>
+
+        <!-- CASES -->
+        <section class="view hidden" data-view="cases">
+          <div class="split-2">
+            <section class="panel">
+              <div class="panel-head"><h2>Case / Escalation</h2></div>
+              <div class="tab-body">
+                <div id="ticket-empty" class="muted small pad">Select an alert (Alerts tab), gather evidence in Discover, then raise a case to Tier 2 here.</div>
+                <form id="ticket-form" class="ticket-form hidden">
+                  <div class="tf-alert" id="tf-alert"></div>
+                  <label class="fld"><span>Disposition</span>
+                    <div class="seg-radio">
+                      <label><input type="radio" name="verdict" value="escalate" checked /><span>Escalate (true positive)</span></label>
+                      <label><input type="radio" name="verdict" value="false_positive" /><span>False positive</span></label>
+                    </div>
+                  </label>
+                  <div class="fld-row">
+                    <label class="fld"><span>Severity</span>
+                      <select name="severity" id="tf-severity">
+                        <option value="low">Low</option><option value="medium">Medium</option>
+                        <option value="high">High</option><option value="critical">Critical</option>
+                      </select>
+                    </label>
+                    <label class="fld"><span>Recommended action</span>
+                      <select name="recommendedAction" id="tf-action">
+                        <option value="isolate_host">Isolate host</option>
+                        <option value="reset_credentials">Reset credentials</option>
+                        <option value="disable_account">Disable account</option>
+                        <option value="block_ip">Block IP</option>
+                        <option value="remediate_vector">Remediate vector / patch</option>
+                        <option value="full_remediation">Full remediation</option>
+                        <option value="monitor">Monitor only</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="fld"><span>Affected hosts <span class="muted small">(comma-separated)</span></span>
+                    <input type="text" id="tf-hosts" placeholder="e.g. web01, db01" /></label>
+                  <label class="fld"><span>Affected accounts <span class="muted small">(comma-separated)</span></span>
+                    <input type="text" id="tf-accounts" placeholder="e.g. jsmith" /></label>
+                  <label class="fld"><span>Source IPs <span class="muted small">(comma-separated)</span></span>
+                    <input type="text" id="tf-ips" placeholder="e.g. 185.23.4.7" /></label>
+                  <div class="fld">
+                    <span>Evidence <span class="muted small">(ticked in Discover)</span></span>
+                    <div class="evidence-tray"><span class="muted small">No evidence attached.</span></div>
+                  </div>
+                  <label class="fld"><span>Analyst notes</span>
+                    <textarea id="tf-notes" rows="2" placeholder="Summary for Tier 2…"></textarea></label>
+                  <div class="tf-actions">
+                    <button type="button" id="btn-hint" class="btn btn-ghost btn-sm" title="Costs 25 points">💡 Hint (-25)</button>
+                    <button type="submit" class="btn btn-primary">Escalate to Tier 2 ▶</button>
+                  </div>
+                </form>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><h2>Tier 2 activity <span class="count-badge">0</span></h2></div>
+              <div class="tab-body"><div class="t2-feed" id="t2-feed"><div class="muted small pad">Tier 2 activity will appear here.</div></div></div>
+            </section>
           </div>
         </section>
+
       </main>
     </div>
   </div>

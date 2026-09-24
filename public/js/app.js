@@ -15,7 +15,7 @@
     kb: {}, dossiers: [], hostTags: {}, levels: [], ipToHost: {},
     selectedAlertId: null, evidence: new Map(),
     live: true, pivots: [], searchSource: '', searchText: '', viewEvents: null,
-    ended: false, epsBuf: [], expanded: new Set(),
+    ended: false, epsBuf: [], expanded: new Set(), view: 'alerts', lastQuery: null,
   };
 
   // ---------------- boot ----------------
@@ -106,6 +106,7 @@
     SOCMap.init($('#cy'), snap.network, { onHostClick: onHostClick });
     Object.entries(S.hostTags).forEach(([h, t]) => SOCMap.setTag(h, t));
     renderAll();
+    showView('alerts');
   }
 
   // ---------------- deltas ----------------
@@ -167,6 +168,7 @@
     }
   }
   function animateFlows(events) {
+    if (S.view !== 'network') return; // only animate while the Network tab is visible
     if (!window.SOCMap || !SOCMap.flowPacket) return;
     let budget = 14; // cap packets spawned per delta to keep the map calm
     for (const ev of events) {
@@ -180,8 +182,8 @@
   // firewall-permitted links so the network map always looks alive (these are
   // not log events — just the constant hum of a working network).
   setInterval(() => {
-    if (!S.network || !window.SOCMap || !SOCMap.flowPacket) return;
-    if (S.meta.paused || S.meta.ended) return;
+    if (S.view !== 'network' || !S.network || !window.SOCMap || !SOCMap.flowPacket) return;
+    if (S.meta.ended) return;
     const edges = S.network.edges;
     if (!edges || !edges.length) return;
     const n = 1 + Math.floor(Math.random() * 2);
@@ -207,8 +209,9 @@
     $('#clock').textContent = mt.clock || '--:--:--';
     const dp = $('#dp-label'); if (dp && S.live && mt.clock) dp.textContent = 'Live · ' + mt.clock.slice(0, 5);
     $$('#speed-controls .speed-btn').forEach((b) => b.classList.toggle('active', +b.dataset.speed === mt.speed));
-    $('#t2-count').textContent = S.messages.length;
+    const c = $('#t2-count'); if (c) c.textContent = S.messages.length;
     renderKPIs();
+    renderOverview();
   }
   const THREAT_LABEL = { dormant: 'Quiet', active: 'Active intrusion', spreading: 'SPREADING', stopped: 'Contained', gaveup: 'Withdrawn', succeeded: 'BREACHED' };
   function renderKPIs() {
@@ -291,18 +294,21 @@
   $('#alert-filter').onchange = renderAlerts;
   $('#alert-sort').onchange = renderAlerts;
 
-  function selectAlert(id) {
+  function selectAlert(id, opts = {}) {
     S.selectedAlertId = id;
     const a = S.alerts.get(id);
     renderAlerts();
     renderAlertDetail(a);
     prefillTicket(a);
-    switchTab('ticket');
-    // Load the alert's evidence into the investigation view.
+    // Update the Discover evidence-rail context (shared state across tabs).
+    const ctx = $('#disco-context');
+    if (ctx && a) ctx.innerHTML = `Working alert: <b>${esc(a.title)}</b> <span class="muted">(${esc((a.kb && a.kb.mitre) || '')})</span>`;
+    // Load the alert's evidence into Discover so the analyst can pivot from it.
     if (a && a.evidenceEventIds && a.evidenceEventIds.length) {
       Net.send('get_events', { ids: a.evidenceEventIds, forAlert: id });
       setPivotCrumbs([{ kind: 'alert', value: a.title }]);
     }
+    if (opts.focus) showView('alerts');
   }
 
   // ---------------- alert detail + KB ----------------
@@ -378,7 +384,7 @@
     if (m.meta) { S.meta = m.meta; renderMeta(); }
     // clear evidence tray + notes after submit
     S.evidence.clear(); renderEvidence(); $('#tf-notes').value = '';
-    renderTier2(); switchTab('tier2');
+    renderTier2();
   }
 
   $('#btn-hint').onclick = () => { if (S.selectedAlertId) Net.send('buy_hint', { alertId: S.selectedAlertId }); else toast('Select an alert first.'); };
@@ -391,16 +397,11 @@
 
   // ---------------- Tier 2 feed ----------------
   function renderTier2() {
-    const feed = $('#t2-feed');
-    if (!S.messages.length) { feed.innerHTML = '<div class="muted small pad">Tier 2 messages will appear here.</div>'; return; }
-    feed.innerHTML = '';
-    S.messages.slice(-60).forEach((m) => {
-      const div = el('div', `t2-msg ${m.kind || 'ok'}`);
-      div.innerHTML = `<span class="t2-time">${fmtClock(m.ts)}</span>${esc(m.text)}`;
-      feed.appendChild(div);
-    });
-    feed.scrollTop = feed.scrollHeight;
-    $('#t2-count').textContent = S.messages.length;
+    const html = S.messages.length
+      ? S.messages.slice(-60).map((m) => `<div class="t2-msg ${m.kind || 'ok'}"><span class="t2-time">${fmtClock(m.ts)}</span>${esc(m.text)}</div>`).join('')
+      : '<div class="muted small pad">Tier 2 activity will appear here.</div>';
+    $$('.t2-feed').forEach((feed) => { feed.innerHTML = html; feed.scrollTop = feed.scrollHeight; });
+    const c = $('#t2-count'); if (c) c.textContent = S.messages.length;
   }
 
   // ---------------- investigation / logs ----------------
@@ -537,15 +538,16 @@
     const tr = $(`.log-row[data-id="${ev.id}"]`); if (tr) tr.classList.toggle('selected', on);
   }
   function renderEvidence() {
-    const tray = $('#evidence-tray');
-    if (!S.evidence.size) { tray.innerHTML = '<span class="muted small">No evidence attached. Tick log lines in the investigation view.</span>'; return; }
-    tray.innerHTML = '';
-    for (const ev of S.evidence.values()) {
-      const chip = el('div', 'ev-chip');
-      chip.innerHTML = `<span title="${esc(ev.message)}">${fmtClock(ev.ts)} ${esc(ev.source)} · ${esc(ev.host)}</span><span class="rm">✕</span>`;
-      chip.querySelector('.rm').onclick = () => toggleEvidence(ev, false);
-      tray.appendChild(chip);
-    }
+    $$('.evidence-tray').forEach((tray) => {
+      if (!S.evidence.size) { tray.innerHTML = '<span class="muted small">No evidence attached. Tick log lines in Discover.</span>'; return; }
+      tray.innerHTML = '';
+      for (const ev of S.evidence.values()) {
+        const chip = el('div', 'ev-chip');
+        chip.innerHTML = `<span title="${esc(ev.message)}">${fmtClock(ev.ts)} ${esc(ev.source)} · ${esc(ev.host)}</span><span class="rm">✕</span>`;
+        chip.querySelector('.rm').onclick = () => toggleEvidence(ev, false);
+        tray.appendChild(chip);
+      }
+    });
   }
 
   // ---------------- host click (map) ----------------
@@ -583,12 +585,18 @@
   function closeHostMenu() { if (hostMenu) { hostMenu.remove(); hostMenu = null; } }
   document.addEventListener('click', (e) => { if (hostMenu && !hostMenu.contains(e.target) && !e.target.closest('#cy')) closeHostMenu(); });
 
-  // ---------------- tabs ----------------
-  $$('#right-tabs .tab').forEach((t) => t.onclick = () => switchTab(t.dataset.tab));
-  function switchTab(name) {
-    $$('#right-tabs .tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
-    $$('.tab-body').forEach((b) => b.classList.toggle('hidden', b.dataset.body !== name));
-    if (name === 'detail') renderAlertDetail(S.alerts.get(S.selectedAlertId));
+  // ---------------- view switching (Elastic-style tabs that share state) ----------------
+  const VIEWS = ['overview', 'alerts', 'discover', 'network', 'cases'];
+  function showView(name) {
+    if (!VIEWS.includes(name)) return;
+    S.view = name;
+    $$('.view').forEach((v) => v.classList.toggle('hidden', v.dataset.view !== name));
+    $$('.knav-item').forEach((b) => b.classList.toggle('active', b.dataset.nav === name));
+    if (name === 'network') setTimeout(() => window.SOCMap && SOCMap.resize && SOCMap.resize(), 40);
+    else if (name === 'discover') { renderLogs(); setTimeout(() => $('#log-search') && $('#log-search').focus(), 30); }
+    else if (name === 'alerts') { renderAlerts(); renderAlertDetail(S.alerts.get(S.selectedAlertId)); }
+    else if (name === 'overview') renderOverview();
+    else if (name === 'cases') renderEvidence();
   }
 
   // ---------------- speed controls (keyboard shortcut) ----------------
@@ -606,10 +614,13 @@
     if (nav === 'actors') return openDossiers();
     if (nav === 'report') return Net.send('get_report');
     if (nav === 'new') return toStartScreen();
-    $$('.knav-item').forEach((x) => x.classList.toggle('active', x === b));
-    const panelSel = { overview: '.panel-alerts', incidents: '.panel-alerts', investigate: '.panel-logs', network: '.panel-map', cases: '.panel-ticket' }[nav];
-    if (panelSel) { const p = $(panelSel); if (p) { p.classList.add('flash'); setTimeout(() => p.classList.remove('flash'), 600); if (nav === 'investigate') $('#log-search').focus(); } }
+    showView(nav);
   });
+
+  // Cross-view actions — the tabs work together via shared state.
+  $('#btn-investigate').onclick = () => { const a = S.alerts.get(S.selectedAlertId); if (!a) return toast('Select an alert first.'); showView('discover'); if (a.evidenceEventIds && a.evidenceEventIds.length) { Net.send('get_events', { ids: a.evidenceEventIds, forAlert: a.id }); setPivotCrumbs([{ kind: 'alert', value: a.title }]); } };
+  $('#btn-createcase').onclick = () => { if (!S.selectedAlertId) return toast('Select an alert first.'); showView('cases'); };
+  $('#disco-tocase').onclick = () => showView('cases');
 
   // ---------------- Discover refresh (KQL bar) ----------------
   $('#log-refresh').onclick = () => {
@@ -723,5 +734,32 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add('hidden'), 3200);
   }
 
-  function renderAll() { renderMeta(); renderAlerts(); renderLogs(); renderTier2(); renderEvidence(); recomputeImplicated(); }
+  function renderAll() { renderMeta(); renderAlerts(); renderLogs(); renderTier2(); renderEvidence(); recomputeImplicated(); renderOverview(); }
+
+  // ---------------- Overview dashboard ----------------
+  const OV_THREAT = { dormant: ['Quiet', 'var(--text2)'], active: ['Active intrusion', 'var(--high)'], spreading: ['Infection spreading', 'var(--crit)'], stopped: ['Contained', 'var(--ok)'], gaveup: ['Attacker withdrew', 'var(--ok)'], succeeded: ['Objective breached', 'var(--crit)'] };
+  function renderOverview() {
+    if (S.view !== 'overview') return;
+    const mt = S.meta;
+    const st = OV_THREAT[mt.attackStatus] || ['—', 'var(--text2)'];
+    const sEl = $('#ov-status'); if (sEl) { sEl.textContent = st[0]; sEl.style.color = st[1]; }
+    const open = [...S.alerts.values()].filter((a) => a.status === 'new' || a.status === 'breached');
+    const sub = $('#ov-status-sub'); if (sub) sub.textContent = `${open.length} open alerts · Tier 2 trust ${Math.round((mt.trust ?? 1) * 100)}% · score ${mt.points ?? 0}`;
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const a of open) counts[a.severity] = (counts[a.severity] || 0) + 1;
+    const row = $('#ov-sevrow');
+    if (row) row.innerHTML = ['critical', 'high', 'medium', 'low'].map((s) => `<div class="ov-sev sev-${s}"><span class="ov-sev-n">${counts[s]}</span><span class="ov-sev-l">${s}</span></div>`).join('');
+    const list = $('#ov-alerts');
+    if (list) {
+      const recent = [...S.alerts.values()].sort((a, b) => b.ts - a.ts).slice(0, 12);
+      list.innerHTML = recent.length ? '' : '<div class="muted small pad">No alerts yet.</div>';
+      for (const a of recent) {
+        const sla = slaInfo(a);
+        const item = el('div', `ov-alert-item sev-${a.severity}`);
+        item.innerHTML = `<span class="sev-cell sev-${a.severity}"><span class="sev-dot"></span>${a.severity}</span><span class="ova-time">${fmtClock(a.ts)}</span><span class="ova-title">${esc(a.title)}</span><span class="sla-pill ${sla.cls}">${sla.txt}</span>`;
+        item.onclick = () => selectAlert(a.id, { focus: true });
+        list.appendChild(item);
+      }
+    }
+  }
 })();
