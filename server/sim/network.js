@@ -246,6 +246,10 @@ export function generateNetwork(seed) {
     (reachFrom[e.from] ||= []).push({ to: e.to, ports: e.ports, note: e.note });
   }
 
+  // Seed-varied visual layout so every network *looks* distinct on the map, not
+  // just structurally different. Deterministic per seed.
+  const layout = generateLayout(rng.fork('layout'), hosts);
+
   return {
     seed,
     org,
@@ -257,6 +261,7 @@ export function generateNetwork(seed) {
     edges,
     rules,
     reachFrom,
+    layout,
     // Named references the rest of the sim uses.
     landmarks: {
       webServers: webServers.map((h) => h.id),
@@ -271,4 +276,74 @@ export function generateNetwork(seed) {
     },
     egressAllowed: true,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Layout generation — produce {hostId:{x,y}, internet:{x,y}, style} positions
+// that vary by seed while keeping each zone visually grouped (so the map stays
+// readable). Three distinct arrangement styles are chosen per seed.
+// ---------------------------------------------------------------------------
+function generateLayout(rng, hosts) {
+  const zonesOrder = ['dmz', 'corp', 'servers', 'mgmt'];
+  const byZone = {};
+  for (const z of zonesOrder) byZone[z] = hosts.filter((h) => h.zone === z);
+  const pos = {};
+  const jit = (n) => rng.float(-n, n);
+
+  // Arrange a list of nodes in a compact grid centred on (cx,cy).
+  const gridAround = (list, cx, cy, cell = 96, maxCols = 4) => {
+    const cols = Math.max(1, Math.min(maxCols, Math.ceil(Math.sqrt(list.length))));
+    const rows = Math.ceil(list.length / cols);
+    list.forEach((h, i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      pos[h.id] = { x: cx + (c - (cols - 1) / 2) * cell + jit(10), y: cy + (r - (rows - 1) / 2) * (cell * 0.78) + jit(8) };
+    });
+  };
+  // Arrange nodes evenly on a ring centred on (cx,cy).
+  const ringAround = (list, cx, cy, radius) => {
+    const n = list.length;
+    const a0 = rng.float(0, Math.PI * 2);
+    list.forEach((h, i) => {
+      const a = a0 + (i / Math.max(1, n)) * Math.PI * 2;
+      const rr = radius * (n === 1 ? 0 : 1) + jit(6);
+      pos[h.id] = { x: cx + Math.cos(a) * rr + jit(6), y: cy + Math.sin(a) * rr + jit(6) };
+    });
+  };
+
+  const style = rng.pick(['hierarchy', 'columns', 'radial']);
+
+  if (style === 'hierarchy') {
+    pos.internet = { x: 500 + jit(40), y: 40 };
+    gridAround(byZone.dmz, 500 + jit(60), 165, 120, 3);
+    const swap = rng.bool();
+    gridAround(byZone.corp, swap ? 300 : 720, 350, 96, 4);
+    gridAround(byZone.servers, swap ? 760 : 280, 350, 110, 3);
+    gridAround(byZone.mgmt, 500 + jit(120), 545, 110, 3);
+  } else if (style === 'columns') {
+    pos.internet = { x: 70, y: 350 + jit(30) };
+    const mids = rng.shuffle(['corp', 'servers', 'mgmt']);
+    const cols = ['dmz', ...mids];
+    const xs = [230, 430, 640, 860];
+    cols.forEach((z, i) => {
+      const list = byZone[z]; const cx = xs[i];
+      const rows = list.length; const spacing = Math.min(120, 620 / Math.max(1, rows));
+      list.forEach((h, r) => { pos[h.id] = { x: cx + jit(20), y: 60 + r * spacing + jit(8) }; });
+    });
+  } else { // radial hub
+    const cx = 520, cy = 360;
+    pos.internet = { x: cx + jit(30), y: 70 };
+    // Each zone becomes a cluster at a seeded angle/radius around the centre.
+    const base = rng.float(0, Math.PI * 2);
+    const zoneRing = { dmz: 190, corp: 300, servers: 300, mgmt: 210 };
+    zonesOrder.forEach((z, i) => {
+      const list = byZone[z]; if (!list.length) return;
+      const ang = base + (i / zonesOrder.length) * Math.PI * 2 + jit(0.25);
+      const R = zoneRing[z] + jit(30);
+      const clx = cx + Math.cos(ang) * R, cly = cy + Math.sin(ang) * R;
+      if (list.length <= 3) ringAround(list, clx, cly, 34);
+      else ringAround(list, clx, cly, 30 + list.length * 6);
+    });
+  }
+  pos.style = style;
+  return pos;
 }

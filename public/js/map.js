@@ -49,7 +49,8 @@
   function init(el, network, handlers) {
     if (typeof cytoscape === 'undefined') { setTimeout(() => init(el, network, handlers), 200); return; }
     if (cy) { cy.destroy(); cy = null; }
-    const positions = laneNodes(network.hosts);
+    // Use the seed-generated layout (varies per seed); fall back to lanes.
+    const positions = (network.layout && network.layout.internet) ? network.layout : laneNodes(network.hosts);
 
     const nodes = [{ data: { id: 'internet', label: '☁ Internet', zone: 'internet', type: 'internet' }, position: positions['internet'] }];
     for (const h of network.hosts) {

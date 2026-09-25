@@ -325,6 +325,7 @@ export class GameSession {
         hosts: this.network.hosts.map((h) => ({ id: h.id, hostname: h.hostname, ip: h.ip, zone: h.zone, type: h.type, os: h.os, crownJewel: h.crownJewel, services: h.services })),
         edges: this.network.edges.map((e) => ({ from: e.from, to: e.to })),
         rules: this.network.rules,
+        layout: this.network.layout,
       },
       users: this.personas.map((p) => ({ username: p.username, name: p.name, role: p.role, dept: p.dept, primaryHost: p.primaryHost, workHours: [p.workStart, p.workEnd], usesVpn: p.habits.usesVpn, admin: p.habits.admin })),
       alerts: this.alerts.map((a) => this._clientAlert(a)),
