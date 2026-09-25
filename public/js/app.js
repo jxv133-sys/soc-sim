@@ -107,6 +107,7 @@
     Object.entries(S.hostTags).forEach(([h, t]) => SOCMap.setTag(h, t));
     renderAll();
     showView('alerts');
+    maybeShowTips();
   }
 
   // ---------------- deltas ----------------
@@ -186,10 +187,9 @@
     if (S.meta.ended) return;
     const edges = S.network.edges;
     if (!edges || !edges.length) return;
-    const n = 1 + Math.floor(Math.random() * 2);
+    const n = 2 + Math.floor(Math.random() * 3); // a livelier hum of background traffic
     for (let i = 0; i < n; i++) {
       const e = edges[Math.floor(Math.random() * edges.length)];
-      // mostly ride internal links; occasionally show internet egress
       SOCMap.flowPacket(e.from, e.to, 'ambient');
     }
   }, 600);
@@ -610,6 +610,8 @@
     if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
     const map = { Digit1: 1, Digit2: 2, Digit4: 4, Digit8: 8 };
     if (map[e.code]) { e.preventDefault(); Net.send('set_speed', { speed: map[e.code] }); }
+    else if (e.code === 'KeyH') { e.preventDefault(); openHelp(); }
+    else if (e.code === 'Escape') { $('#modal').classList.add('hidden'); }
   });
   $('#briefing-dismiss').onclick = () => { $('#briefing').classList.add('hidden'); };
 
@@ -639,6 +641,37 @@
   // ---------------- modals ----------------
   $('#modal-close').onclick = () => $('#modal').classList.add('hidden');
   function openModal(title, html) { $('#modal-title').textContent = title; $('#modal-body').innerHTML = html; $('#modal').classList.remove('hidden'); return $('#modal-body'); }
+
+  // ---------------- Help / how to play ----------------
+  function openHelp() {
+    openModal('❓ How to play — Tier 1 SOC analyst', `<div class="help-body">
+      <p>You are a <b>Tier 1 analyst</b>. You don't touch the network — you triage alerts, investigate the logs, and escalate real threats to Tier 2, who acts on them. Beat the attacker before it reaches its objective.</p>
+      <h4>The core loop</h4>
+      <ol>
+        <li><b>Alerts tab</b> — work the queue. Each alert has a severity and an <b>SLA timer</b>. The hard part: many alerts are <b>benign noise</b> (a user fat-fingering a password, an authorized scanner) that trip the same rules as a real attack. Click one to read its explainer.</li>
+        <li><b>Investigate in Discover</b> — from a selected alert, jump to Discover. It pivots onto the source IP/host so you see the surrounding activity. Keep pivoting (same IP / user / host / ±time) to build the story. An internal source is usually a fumble; an external one hitting many accounts is not.</li>
+        <li><b>Collect evidence</b> — tick the log lines that prove it. They attach to your case (shown in Discover's rail and the Cases tab).</li>
+        <li><b>Open a case → escalate</b> — set the disposition (true/false positive), severity, affected hosts/accounts, and a recommended action, then send it to Tier 2.</li>
+      </ol>
+      <h4>Tier 2 reviews — you don't get instant answers</h4>
+      <p>After you submit, Tier 2 <b>reviews</b> and only then reports back whether it was a true or false positive and what they did. A confirmed critical (e.g. a webshell) is actioned in seconds; a vague or over-eager escalation of noise erodes <b>Tier-2 trust</b> and slows every future review.</p>
+      <h4>The tabs</h4>
+      <ul>
+        <li><b>Overview</b> — the shift dashboard. <b>Alerts</b> — the queue. <b>Discover</b> — search/investigate the logs. <b>Network</b> — the live map (watch traffic flow; tag hosts). <b>Cases</b> — your escalation + Tier 2 activity.</li>
+        <li><b>Rules &amp; KB</b> explains every detection; <b>Threat actors</b> holds dossiers you can match to what you see (attribution). <b>After-action</b> shows the full debrief.</li>
+      </ul>
+      <h4>Clock</h4>
+      <p>The shift runs in <b>real time</b>. There's no pause — use the speed control (top-right, or keys <span class="hk">1</span><span class="hk">2</span><span class="hk">4</span><span class="hk">8</span>) to fast-forward quiet stretches to the next activity.</p>
+    </div>`);
+  }
+  $('#btn-help').onclick = openHelp;
+
+  // First-run tips banner (remembered per browser).
+  function maybeShowTips() {
+    let dismissed = false; try { dismissed = localStorage.getItem('socsim.tips') === 'done'; } catch (e) {}
+    $('#tips-banner').classList.toggle('hidden', dismissed);
+  }
+  $('#tips-dismiss').onclick = () => { $('#tips-banner').classList.add('hidden'); try { localStorage.setItem('socsim.tips', 'done'); } catch (e) {} };
 
   function openKb() {
     const html = Object.entries(S.kb).map(([k, v]) =>

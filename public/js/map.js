@@ -96,10 +96,13 @@
         { selector: 'node.impact-exfil', style: { 'background-color': '#f68fbe', 'background-opacity': 0.5, 'border-color': '#f68fbe', 'border-width': 3 } },
         { selector: 'node.impact-mine', style: { 'background-color': '#d6bf57', 'background-opacity': 0.5, 'border-color': '#d6bf57', 'border-width': 3 } },
         { selector: 'node.contained', style: { 'border-style': 'dotted', 'border-color': '#36a2ef', opacity: 0.6 } },
-        { selector: 'edge.hot', style: { 'line-color': '#e7664c', width: 2.4, opacity: 1 } },
-        // Animated traffic packets travelling along edges.
-        { selector: 'node.pkt', style: { label: '', 'text-opacity': 0, events: 'no', 'border-width': 0, width: 7, height: 7, 'background-opacity': 1, 'z-index': 999, shape: 'ellipse' } },
-        { selector: 'edge.flowing', style: { 'line-color': '#2c5a57', width: 1.8, opacity: 1 } },
+        { selector: 'edge.hot', style: { 'line-color': '#e7664c', width: 3, opacity: 1 } },
+        // Links light up while traffic flows across them (animated "marching
+        // ants" dashed line in the traffic's colour makes data movement obvious).
+        { selector: 'edge.flowing', style: { width: 3, opacity: 1, 'line-style': 'dashed', 'line-dash-pattern': [7, 6], 'line-cap': 'round' } },
+        // Traffic packets: bright core with a translucent halo so they read
+        // clearly against the map.
+        { selector: 'node.pkt', style: { label: '', 'text-opacity': 0, events: 'no', 'border-width': 3, 'border-opacity': 0.35, width: 9, height: 9, 'background-opacity': 1, 'z-index': 999, shape: 'ellipse' } },
       ],
       layout: { name: 'preset' },
     });
@@ -165,12 +168,41 @@
 
   // Send a packet travelling hop-by-hop along the links from → to. Colour encodes
   // the log source, so the analyst literally watches traffic move across the
-  // network along the real firewall-permitted paths.
-  const PKT_COLOR = { auth: '#36a2ef', web: '#da8b45', network: '#54b399', dns: '#98a2b3', ambient: '#2c5a57' };
-  let pktSeq = 0;
-  let pktCount = 0;
+  // network along the real firewall-permitted paths. Each link the packet crosses
+  // lights up with an animated dashed "flow" in the traffic's colour.
+  const PKT_COLOR = { auth: '#36a2ef', web: '#da8b45', network: '#54b399', dns: '#98a2b3', ambient: '#4b7f88' };
+  let pktSeq = 0, pktCount = 0;
+  const edgeFlow = new Map(); // edgeId -> active packet count (keeps the link lit while ≥1 packet rides it)
+  let dashTimer = null, dashOffset = 0;
+  function startDash() {
+    if (dashTimer) return;
+    dashTimer = setInterval(() => {
+      if (!cy) { clearInterval(dashTimer); dashTimer = null; return; }
+      const flowing = cy.edges('.flowing');
+      if (!flowing.length) { clearInterval(dashTimer); dashTimer = null; return; }
+      dashOffset -= 2; // marching ants
+      flowing.style('line-dash-offset', dashOffset);
+    }, 45);
+  }
+  function litEdge(a, b, color, ambient) {
+    const ed = a.edgesWith(b);
+    if (!ed || !ed.length) return null;
+    const id = ed.id();
+    edgeFlow.set(id, (edgeFlow.get(id) || 0) + 1);
+    ed.style({ 'line-color': color, width: ambient ? 2 : 3 });
+    ed.addClass('flowing');
+    startDash();
+    return ed;
+  }
+  function unlitEdge(ed) {
+    if (!ed || !ed.length) return;
+    const id = ed.id();
+    const c = (edgeFlow.get(id) || 1) - 1;
+    if (c <= 0) { edgeFlow.delete(id); ed.removeClass('flowing'); ed.removeStyle('line-color width line-dash-offset'); }
+    else edgeFlow.set(id, c);
+  }
   function flowPacket(fromId, toId, kind) {
-    if (!cy || pktCount > 70) return;
+    if (!cy || pktCount > 90) return;
     const path = pathBetween(fromId, toId);
     if (!path || path.length < 2) return; // no link path → don't float a packet
     const start = cy.$id(path[0]);
@@ -179,25 +211,26 @@
     const ambient = kind === 'ambient';
     const id = 'pkt-' + (pktSeq++);
     const color = PKT_COLOR[kind] || '#00bfb3';
-    const sz = ambient ? 4 : 7;
+    const sz = ambient ? 6 : 10;
     let node;
     try {
       node = cy.add({ group: 'nodes', data: { id, pkt: true }, position: { x: p0.x, y: p0.y }, classes: 'pkt', selectable: false, grabbable: false });
-      node.style({ 'background-color': color, width: sz, height: sz, 'background-opacity': ambient ? 0.65 : 1 });
+      node.style({ 'background-color': color, 'border-color': color, width: sz, height: sz, 'background-opacity': ambient ? 0.75 : 1 });
     } catch (e) { return; }
     pktCount++;
-    const litEdges = [];
-    const cleanup = () => { try { node.remove(); } catch (e) {} pktCount--; litEdges.forEach((ed) => { try { ed.removeClass('flowing'); } catch (e) {} }); };
+    let curEdge = null;
+    const cleanup = () => { try { node.remove(); } catch (e) {} pktCount--; if (curEdge) unlitEdge(curEdge); };
 
-    // Walk each segment of the path in turn.
+    // Walk each segment of the path in turn, lighting the link it rides.
     const step = (i) => {
+      if (curEdge) { unlitEdge(curEdge); curEdge = null; }
       if (i >= path.length - 1) { cleanup(); return; }
       const a = cy.$id(path[i]), b = cy.$id(path[i + 1]);
       if (!a || !b || a.empty() || b.empty()) { cleanup(); return; }
       const pa = a.position(), pb = b.position();
       const dist = Math.hypot(pb.x - pa.x, pb.y - pa.y);
-      const dur = Math.max(160, Math.min(520, dist * 1.6));
-      if (!ambient) { const ed = a.edgesWith(b); if (ed && ed.length) { ed.addClass('flowing'); litEdges.push(ed); } }
+      const dur = Math.max(240, Math.min(680, dist * 2.4)); // a touch slower, so it's trackable
+      curEdge = litEdge(a, b, color, ambient);
       node.animate({ position: { x: pb.x, y: pb.y } }, { duration: dur, easing: 'linear', complete: () => step(i + 1) });
     };
     step(0);

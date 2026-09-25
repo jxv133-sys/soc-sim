@@ -55,21 +55,33 @@
           <span class="clock" id="clock">--:--:--</span>
           <div class="speed-seg" id="speed-controls"></div>
         </div>
+        <button id="btn-help" class="topbar-btn" title="How to play (H)">? Help</button>
         <div class="analyst"><span class="ana-avatar">T1</span><div class="ana-meta"><b id="analyst-name">t1_analyst</b><span class="muted small">Tier 1</span></div></div>
       </div>
     </header>
 
+    <!-- First-run tips banner (dismissible, remembered) -->
+    <div id="tips-banner" class="tips-banner hidden">
+      <span class="tips-steps">
+        <b>How a shift works:</b>
+        <span class="tip-step"><i>1</i> Triage an <b>Alert</b> — is it a real threat or benign noise?</span>
+        <span class="tip-step"><i>2</i> <b>Investigate</b> in Discover — pivot on the IP/host to see the story</span>
+        <span class="tip-step"><i>3</i> Collect evidence, then <b>Open a case</b> and escalate to Tier 2</span>
+      </span>
+      <button id="tips-dismiss" class="btn btn-ghost btn-sm">Got it ✕</button>
+    </div>
+
     <!-- KPI dashboard strip -->
     <div class="kpi-strip">
-      <div class="kpi"><div class="kpi-val" id="kpi-open">0</div><div class="kpi-lbl">Open incidents</div></div>
-      <div class="kpi kpi-crit"><div class="kpi-val" id="kpi-crit">0</div><div class="kpi-lbl">Critical</div></div>
-      <div class="kpi kpi-high"><div class="kpi-val" id="kpi-high">0</div><div class="kpi-lbl">High</div></div>
-      <div class="kpi kpi-breach"><div class="kpi-val" id="kpi-breach">0</div><div class="kpi-lbl">SLA breaches</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpi-eps">0<span class="kpi-unit">/s</span></div><div class="kpi-lbl">Event rate</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpi-trust">100<span class="kpi-unit">%</span></div><div class="kpi-lbl">Tier-2 trust</div><div class="kpi-bar"><div id="trust-fill"></div></div></div>
-      <div class="kpi"><div class="kpi-val" id="kpi-score">1000</div><div class="kpi-lbl">Analyst score</div></div>
-      <div class="kpi kpi-threat"><div class="kpi-val" id="kpi-status">—</div><div class="kpi-lbl">Threat status</div></div>
-      <div class="kpi-seed"><span class="muted small">SEED</span><span class="mono" id="seed-name">—</span></div>
+      <div class="kpi" title="Alerts still needing triage (new or SLA-breached)"><div class="kpi-val" id="kpi-open">0</div><div class="kpi-lbl">Open incidents</div></div>
+      <div class="kpi kpi-crit" title="Open critical-severity alerts — highest priority"><div class="kpi-val" id="kpi-crit">0</div><div class="kpi-lbl">Critical</div></div>
+      <div class="kpi kpi-high" title="Open high-severity alerts"><div class="kpi-val" id="kpi-high">0</div><div class="kpi-lbl">High</div></div>
+      <div class="kpi kpi-breach" title="Alerts whose SLA timer ran out before you handled them"><div class="kpi-val" id="kpi-breach">0</div><div class="kpi-lbl">SLA breaches</div></div>
+      <div class="kpi" title="Log events per second flowing into the SIEM right now"><div class="kpi-val" id="kpi-eps">0<span class="kpi-unit">/s</span></div><div class="kpi-lbl">Event rate</div></div>
+      <div class="kpi" title="Tier 2's confidence in you. Escalating benign noise lowers it and slows their reviews."><div class="kpi-val" id="kpi-trust">100<span class="kpi-unit">%</span></div><div class="kpi-lbl">Tier-2 trust</div><div class="kpi-bar"><div id="trust-fill"></div></div></div>
+      <div class="kpi" title="Your running score this shift"><div class="kpi-val" id="kpi-score">1000</div><div class="kpi-lbl">Analyst score</div></div>
+      <div class="kpi kpi-threat" title="Current state of the intrusion, as far as anyone can tell"><div class="kpi-val" id="kpi-status">—</div><div class="kpi-lbl">Threat status</div></div>
+      <div class="kpi-seed" title="This shift's seed — share it to replay the exact scenario"><span class="muted small">SEED</span><span class="mono" id="seed-name">—</span></div>
     </div>
 
     <!-- Briefing banner -->
@@ -228,7 +240,17 @@
               </div>
             </div>
             <div id="cy" class="cy"></div>
-            <div class="map-foot" id="map-foot"><span class="muted small">Live traffic flows along permitted links. Click a host to investigate or tag it. Fog of war: only observed impact is shown here.</span></div>
+            <div class="map-foot" id="map-foot">
+              <div class="traffic-legend">
+                <span class="tl-title">Live traffic</span>
+                <span class="tl-item"><i class="tl-dot" style="background:#36a2ef"></i>auth</span>
+                <span class="tl-item"><i class="tl-dot" style="background:#da8b45"></i>web</span>
+                <span class="tl-item"><i class="tl-dot" style="background:#54b399"></i>network</span>
+                <span class="tl-item"><i class="tl-dot" style="background:#98a2b3"></i>dns</span>
+                <span class="tl-item"><i class="tl-dot" style="background:#4b7f88"></i>background</span>
+              </div>
+              <span class="muted small">Click a host to investigate or tag it. Fog of war: only observed impact is shown.</span>
+            </div>
           </section>
         </section>
 
